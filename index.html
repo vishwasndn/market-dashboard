@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Market Stock Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d29;
+    --border: #2a2d3a;
+    --text: #e4e4e7;
+    --muted: #9ca3af;
+    --accent: #6366f1;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --blue: #3b82f6;
+    --orange: #f97316;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+  .header { text-align: center; padding: 30px 0 20px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  .header .subtitle { color: var(--muted); font-size: 14px; }
+  .header .scan-time { color: var(--accent); font-size: 13px; margin-top: 8px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .kpi-card .kpi-value { font-size: 32px; font-weight: 700; }
+  .kpi-card .kpi-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-strong-buy .kpi-value { color: var(--green); }
+  .kpi-buy .kpi-value { color: #86efac; }
+  .kpi-hold .kpi-value { color: var(--yellow); }
+  .kpi-sell .kpi-value { color: var(--orange); }
+  .kpi-strong-sell .kpi-value { color: var(--red); }
+  .kpi-total .kpi-value { color: var(--accent); }
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 10px 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); transition: all 0.2s; }
+  .tab:hover { border-color: var(--accent); color: var(--text); }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .tab .tab-count { background: rgba(255,255,255,0.15); padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 6px; }
+  .filters { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+  .filter-group { display: flex; align-items: center; gap: 6px; }
+  .filter-group label { font-size: 12px; color: var(--muted); text-transform: uppercase; }
+  .filter-group select, .filter-group input { background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 8px 12px; font-size: 13px; }
+  .search-box { flex: 1; min-width: 200px; }
+  .search-box input { width: 100%; }
+  .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 30px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: var(--card); position: sticky; top: 0; z-index: 2; }
+  th { padding: 12px 14px; text-align: left; font-weight: 600; color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; user-select: none; }
+  th:hover { color: var(--accent); }
+  th .sort-arrow { margin-left: 4px; font-size: 10px; }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tr:hover { background: rgba(99,102,241,0.05); }
+  .signal { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px; }
+  .signal-strong-buy { background: rgba(34,197,94,0.15); color: var(--green); }
+  .signal-buy { background: rgba(134,239,172,0.15); color: #86efac; }
+  .signal-hold { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .signal-sell { background: rgba(249,115,22,0.15); color: var(--orange); }
+  .signal-strong-sell { background: rgba(239,68,68,0.15); color: var(--red); }
+  .score-bar { display: flex; align-items: center; gap: 8px; }
+  .score-bar .bar { width: 60px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .score-bar .bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .score-val { font-weight: 700; font-size: 14px; min-width: 24px; }
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+  .neutral { color: var(--muted); }
+  .formula-section { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-top: 30px; }
+  .formula-section h3 { font-size: 16px; margin-bottom: 12px; color: var(--accent); }
+  .formula-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+  .formula-item { padding: 12px; background: var(--bg); border-radius: 8px; }
+  .formula-item .metric-name { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .formula-item .metric-detail { font-size: 12px; color: var(--muted); }
+  .formula-item .metric-weight { display: inline-block; background: rgba(99,102,241,0.2); color: var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-top: 4px; }
+  .no-data { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .no-data h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
+  .loading { text-align: center; padding: 60px; }
+  .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .range-bar { position: relative; width: 80px; height: 6px; background: var(--border); border-radius: 3px; display: inline-block; vertical-align: middle; }
+  .range-marker { position: absolute; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; top: -1px; transform: translateX(-50%); }
+  @media (max-width: 768px) { .container { padding: 12px; } .header h1 { font-size: 22px; } .kpi-row { grid-template-columns: repeat(3, 1fr); } .tab { padding: 8px 16px; font-size: 13px; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Multi-Market Stock Dashboard</h1>
+    <div class="subtitle">NASDAQ &bull; BSE India &bull; UAE (ADX/DFM) &mdash; Fundamental Analysis &amp; Buy/Sell Signals</div>
+    <div class="scan-time" id="scanTime">Loading...</div>
+  </div>
+
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi-card kpi-strong-buy"><div class="kpi-value" id="kpiStrongBuy">-</div><div class="kpi-label">Strong Buy</div></div>
+    <div class="kpi-card kpi-buy"><div class="kpi-value" id="kpiBuy">-</div><div class="kpi-label">Buy</div></div>
+    <div class="kpi-card kpi-hold"><div class="kpi-value" id="kpiHold">-</div><div class="kpi-label">Hold</div></div>
+    <div class="kpi-card kpi-sell"><div class="kpi-value" id="kpiSell">-</div><div class="kpi-label">Sell</div></div>
+    <div class="kpi-card kpi-strong-sell"><div class="kpi-value" id="kpiStrongSell">-</div><div class="kpi-label">Strong Sell</div></div>
+    <div class="kpi-card kpi-total"><div class="kpi-value" id="kpiTotal">-</div><div class="kpi-label">Total Stocks</div></div>
+  </div>
+
+  <div class="tabs" id="marketTabs">
+    <div class="tab active" data-market="ALL">All Markets</div>
+    <div class="tab" data-market="NASDAQ">NASDAQ <span class="tab-count" id="countNasdaq">0</span></div>
+    <div class="tab" data-market="BSE">BSE India <span class="tab-count" id="countBse">0</span></div>
+    <div class="tab" data-market="UAE">UAE <span class="tab-count" id="countUae">0</span></div>
+  </div>
+
+  <div class="filters">
+    <div class="filter-group">
+      <label>Signal</label>
+      <select id="filterSignal">
+        <option value="ALL">All Signals</option>
+        <option value="STRONG BUY">Strong Buy</option>
+        <option value="BUY">Buy</option>
+        <option value="HOLD">Hold</option>
+        <option value="SELL">Sell</option>
+        <option value="STRONG SELL">Strong Sell</option>
+      </select>
+    </div>
+    <div class="filter-group search-box">
+      <label>Search</label>
+      <input type="text" id="searchInput" placeholder="Symbol or company name...">
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="stockTable">
+      <thead>
+        <tr>
+          <th data-sort="symbol">Symbol <span class="sort-arrow"></span></th>
+          <th data-sort="name">Company <span class="sort-arrow"></span></th>
+          <th data-sort="market">Market <span class="sort-arrow"></span></th>
+          <th data-sort="price">Price <span class="sort-arrow"></span></th>
+          <th data-sort="percent_change">Change% <span class="sort-arrow"></span></th>
+          <th data-sort="score">Score <span class="sort-arrow"></span></th>
+          <th data-sort="signal">Signal <span class="sort-arrow"></span></th>
+          <th data-sort="pe_ratio">P/E <span class="sort-arrow"></span></th>
+          <th data-sort="eps_growth">EPS Grw% <span class="sort-arrow"></span></th>
+          <th data-sort="dividend_yield">Div Yield <span class="sort-arrow"></span></th>
+          <th data-sort="revenue_growth">Rev Grw% <span class="sort-arrow"></span></th>
+          <th data-sort="profit_margin">Margin% <span class="sort-arrow"></span></th>
+          <th data-sort="debt_equity">D/E <span class="sort-arrow"></span></th>
+          <th>52W Range</th>
+        </tr>
+      </thead>
+      <tbody id="stockBody">
+        <tr><td colspan="14"><div class="loading"><div class="spinner"></div>Loading dashboard data...</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="formula-section">
+    <h3>Scoring Formula (0-100)</h3>
+    <div class="formula-grid">
+      <div class="formula-item"><div class="metric-name">P/E Ratio</div><div class="metric-detail">Lower is better. &lt;10=25pts, &lt;15=22pts, &lt;20=18pts, &lt;25=14pts, &lt;35=8pts</div><div class="metric-weight">Max 25 pts</div></div>
+      <div class="formula-item"><div class="metric-name">EPS Growth</div><div class="metric-detail">&gt;30%=25pts, &gt;20%=22pts, &gt;15%=18pts, &gt;10%=14pts, &gt;5%=10pts</div><div class="metric-weight">Max 25 pts</div></div>
+      <div class="formula-item"><div class="metric-name">Dividend Yield</div><div class="metric-detail">4-6%=15pts, 3-4%=13pts, 2-3%=10pts. &gt;6%=8pts (risk flag)</div><div class="metric-weight">Max 15 pts</div></div>
+      <div class="formula-item"><div class="metric-name">Revenue Growth</div><div class="metric-detail">&gt;25%=15pts, &gt;15%=12pts, &gt;10%=10pts, &gt;5%=7pts</div><div class="metric-weight">Max 15 pts</div></div>
+      <div class="formula-item"><div class="metric-name">Profit Margin</div><div class="metric-detail">&gt;25%=10pts, &gt;15%=8pts, &gt;10%=6pts, &gt;5%=4pts</div><div class="metric-weight">Max 10 pts</div></div>
+      <div class="formula-item"><div class="metric-name">Debt/Equity</div><div class="metric-detail">&lt;0.3=10pts, &lt;0.5=8pts, &lt;1.0=6pts, &lt;1.5=4pts, &lt;2.0=2pts</div><div class="metric-weight">Max 10 pts</div></div>
+    </div>
+    <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;font-size:13px;">
+      <strong style="color:var(--green);">STRONG BUY</strong> (70+) &bull;
+      <strong style="color:#86efac;">BUY</strong> (55-69) &bull;
+      <strong style="color:var(--yellow);">HOLD</strong> (40-54) &bull;
+      <strong style="color:var(--orange);">SELL</strong> (25-39) &bull;
+      <strong style="color:var(--red);">STRONG SELL</strong> (0-24)
+    </div>
+  </div>
+</div>
+
+<script>
+let allStocks = [];
+let currentMarket = 'ALL';
+let currentSignal = 'ALL';
+let currentSearch = '';
+let sortCol = 'score';
+let sortDir = -1;
+
+async function loadData() {
+  try {
+    const resp = await fetch('data/dashboard.json');
+    if (!resp.ok) throw new Error('No data file');
+    const data = await resp.json();
+    allStocks = [];
+    for (const market of Object.keys(data.markets)) {
+      allStocks.push(...data.markets[market]);
+    }
+    const scanDate = new Date(data.scan_time);
+    document.getElementById('scanTime').textContent =
+      'Last scan: ' + scanDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + ' at ' + scanDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('kpiStrongBuy').textContent = data.summary.strong_buy;
+    document.getElementById('kpiBuy').textContent = data.summary.buy;
+    document.getElementById('kpiHold').textContent = data.summary.hold;
+    document.getElementById('kpiSell').textContent = data.summary.sell;
+    document.getElementById('kpiStrongSell').textContent = data.summary.strong_sell;
+    document.getElementById('kpiTotal').textContent = data.total_stocks;
+    document.getElementById('countNasdaq').textContent = data.markets.NASDAQ ? data.markets.NASDAQ.length : 0;
+    document.getElementById('countBse').textContent = data.markets.BSE ? data.markets.BSE.length : 0;
+    document.getElementById('countUae').textContent = data.markets.UAE ? data.markets.UAE.length : 0;
+    renderTable();
+  } catch (e) {
+    document.getElementById('stockBody').innerHTML = '<tr><td colspan="14"><div class="no-data"><h2>No scan data available</h2><p>The scanner hasn\'t run yet. Trigger it manually from GitHub Actions,<br>or wait for the next scheduled scan.</p></div></td></tr>';
+    document.getElementById('scanTime').textContent = 'No data available';
+  }
+}
+
+function getSignalClass(signal) {
+  const map = {'STRONG BUY':'signal-strong-buy','BUY':'signal-buy','HOLD':'signal-hold','SELL':'signal-sell','STRONG SELL':'signal-strong-sell'};
+  return map[signal] || '';
+}
+
+function getScoreColor(score) {
+  if (score >= 70) return 'var(--green)';
+  if (score >= 55) return '#86efac';
+  if (score >= 40) return 'var(--yellow)';
+  if (score >= 25) return 'var(--orange)';
+  return 'var(--red)';
+}
+
+function fmtNum(val, decimals) {
+  decimals = decimals || 2;
+  if (val === null || val === undefined || isNaN(val)) return '\u2014';
+  return Number(val).toFixed(decimals);
+}
+
+function fmtPrice(val, currency) {
+  if (val === null || val === undefined || isNaN(val)) return '\u2014';
+  var sym = {'USD':'$','INR':'\u20b9','AED':'\u062f.\u0625'}[currency] || currency + ' ';
+  return sym + Number(val).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function render52wRange(low, high, price) {
+  if (!low || !high || !price) return '\u2014';
+  var pct = ((price - low) / (high - low)) * 100;
+  var clamped = Math.max(0, Math.min(100, pct));
+  return '<span style="font-size:11px;color:var(--muted)">' + fmtNum(low,0) + '</span> <span class="range-bar"><span class="range-marker" style="left:' + clamped + '%"></span></span> <span style="font-size:11px;color:var(--muted)">' + fmtNum(high,0) + '</span>';
+}
+
+function renderTable() {
+  var stocks = allStocks.slice();
+  if (currentMarket !== 'ALL') stocks = stocks.filter(function(s){return s.market === currentMarket;});
+  if (currentSignal !== 'ALL') stocks = stocks.filter(function(s){return s.signal === currentSignal;});
+  if (currentSearch) {
+    var q = currentSearch.toLowerCase();
+    stocks = stocks.filter(function(s){return s.symbol.toLowerCase().includes(q) || (s.name && s.name.toLowerCase().includes(q));});
+  }
+  stocks.sort(function(a,b) {
+    var va = a[sortCol], vb = b[sortCol];
+    if (va === null || va === undefined) va = sortDir === -1 ? -Infinity : Infinity;
+    if (vb === null || vb === undefined) vb = sortDir === -1 ? -Infinity : Infinity;
+    if (typeof va === 'string') return sortDir * va.localeCompare(vb);
+    return sortDir * (va - vb);
+  });
+  var tbody = document.getElementById('stockBody');
+  if (stocks.length === 0) { tbody.innerHTML = '<tr><td colspan="14"><div class="no-data"><h2>No stocks match your filters</h2></div></td></tr>'; return; }
+  tbody.innerHTML = stocks.map(function(s) {
+    var chgClass = (s.percent_change > 0) ? 'positive' : (s.percent_change < 0) ? 'negative' : 'neutral';
+    var scoreColor = getScoreColor(s.score);
+    return '<tr>' +
+      '<td><strong>' + s.symbol + '</strong></td>' +
+      '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">' + (s.name || '\u2014') + '</td>' +
+      '<td>' + s.market + '</td>' +
+      '<td>' + fmtPrice(s.price, s.currency) + '</td>' +
+      '<td class="' + chgClass + '">' + (s.percent_change !== null ? (s.percent_change > 0 ? '+' : '') + fmtNum(s.percent_change) + '%' : '\u2014') + '</td>' +
+      '<td><div class="score-bar"><span class="score-val" style="color:' + scoreColor + '">' + s.score + '</span><div class="bar"><div class="bar-fill" style="width:' + s.score + '%;background:' + scoreColor + '"></div></div></div></td>' +
+      '<td><span class="signal ' + getSignalClass(s.signal) + '">' + s.signal + '</span></td>' +
+      '<td>' + fmtNum(s.pe_ratio, 1) + '</td>' +
+      '<td class="' + (s.eps_growth > 0 ? 'positive' : s.eps_growth < 0 ? 'negative' : '') + '">' + (s.eps_growth !== null ? fmtNum(s.eps_growth,1) + '%' : '\u2014') + '</td>' +
+      '<td>' + (s.dividend_yield ? fmtNum(s.dividend_yield,2) + '%' : '\u2014') + '</td>' +
+      '<td class="' + (s.revenue_growth > 0 ? 'positive' : s.revenue_growth < 0 ? 'negative' : '') + '">' + (s.revenue_growth !== null ? fmtNum(s.revenue_growth,1) + '%' : '\u2014') + '</td>' +
+      '<td>' + (s.profit_margin !== null ? fmtNum(s.profit_margin,1) + '%' : '\u2014') + '</td>' +
+      '<td>' + fmtNum(s.debt_equity, 2) + '</td>' +
+      '<td>' + render52wRange(s['52w_low'], s['52w_high'], s.price) + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+document.querySelectorAll('.tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+    tab.classList.add('active');
+    currentMarket = tab.dataset.market;
+    renderTable();
+  });
+});
+
+document.getElementById('filterSignal').addEventListener('change', function(e) {
+  currentSignal = e.target.value;
+  renderTable();
+});
+
+document.getElementById('searchInput').addEventListener('input', function(e) {
+  currentSearch = e.target.value;
+  renderTable();
+});
+
+document.querySelectorAll('th[data-sort]').forEach(function(th) {
+  th.addEventListener('click', function() {
+    var col = th.dataset.sort;
+    if (sortCol === col) { sortDir *= -1; } else { sortCol = col; sortDir = -1; }
+    document.querySelectorAll('.sort-arrow').forEach(function(a){a.textContent = '';});
+    th.querySelector('.sort-arrow').textContent = sortDir === -1 ? ' \u25bc' : ' \u25b2';
+    renderTable();
+  });
+});
+
+loadData();
+<\/script>
+</body>
+</html>
