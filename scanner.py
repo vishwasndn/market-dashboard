@@ -2,26 +2,19 @@
 Multi-Market Stock Dashboard Scanner
 Fetches top stocks from NASDAQ, BSE (India), and UAE (ADX/DFM)
 Scores them using fundamental metrics and generates buy/sell signals.
-Uses Twelve Data API (free tier: 800 calls/day, 8/min).
+
+Primary data source: yfinance (no API key needed, no rate limits)
+Fallback for quotes: Twelve Data API (free tier: 800 calls/day, 8/min)
 """
 
 import os
 import json
 import time
-import urllib.request
-import urllib.error
+import sys
 from datetime import datetime, timezone
 
-API_KEY = os.environ.get("TWELVEDATA_API_KEY", "")
-BASE_URL = "https://api.twelvedata.com"
-
-# Rate limiting: 8 requests/min on free tier
-REQUEST_DELAY = 8.0  # seconds between requests (safe for 8/min)
-requests_made = 0
-
 # ---------------------------------------------------------------------------
-# STOCK UNIVERSES - Top 100 by market cap for each market
-# We maintain curated lists because Twelve Data free tier has no screener.
+# STOCK UNIVERSES — Top 100 by market cap for each market
 # ---------------------------------------------------------------------------
 
 NASDAQ_TOP_100 = [
@@ -61,11 +54,13 @@ BSE_TOP_100 = [
 ]
 
 UAE_TOP_STOCKS = [
+    # ADX (Abu Dhabi) - exchange code XADS
     "FAB.XADS", "ETISALAT.XADS", "ADNOCDIST.XADS", "ALDAR.XADS", "IHC.XADS",
     "ADCB.XADS", "TAQA.XADS", "DANA.XADS", "ADIB.XADS", "MULTIPLY.XADS",
     "ADNOCDRILL.XADS", "FERTIGLB.XADS", "PRESIGHT.XADS", "ALPHADHABI.XADS", "ADNOCLOG.XADS",
     "BUROOJ.XADS", "ESG.XADS", "QABC.XADS", "JULPHAR.XADS", "RAKPROP.XADS",
     "ADAVIATION.XADS", "NMDC.XADS", "AGTHIA.XADS", "PALMS.XADS", "RAK.XADS",
+    # DFM (Dubai) - exchange code XDFM
     "EMAAR.XDFM", "DIB.XDFM", "DFM.XDFM", "DEWA.XDFM", "EMIRATESNBD.XDFM",
     "SALIK.XDFM", "DAMAC.XDFM", "DUBAIISLAMIC.XDFM", "MASHR.XDFM", "DEYAAR.XDFM",
     "EMAARDEV.XDFM", "TECOM.XDFM", "SHUAA.XDFM", "DUBAIINVEST.XDFM", "GFH.XDFM",
@@ -73,28 +68,28 @@ UAE_TOP_STOCKS = [
     "DNIR.XDFM", "PARKIN.XDFM", "TALABAT.XDFM", "SPINNEYS.XDFM", "LULU.XDFM"
 ]
 
+# ---------------------------------------------------------------------------
+# Yahoo Finance ticker mapping
+# yfinance uses different suffixes than our internal format:
+#   BSE: .BO (Bombay)    UAE ADX: .AD    UAE DFM: .DU
+# ---------------------------------------------------------------------------
 
-def api_call(endpoint, params):
-    """Make a rate-limited API call to Twelve Data."""
-    global requests_made
+def to_yfinance_symbol(symbol):
+    """Convert our internal symbol format to yfinance format."""
+    if symbol.endswith(".BSE"):
+        return symbol.replace(".BSE", ".BO")
+    elif symbol.endswith(".XADS"):
+        return symbol.replace(".XADS", ".AD")
+    elif symbol.endswith(".XDFM"):
+        return symbol.replace(".XDFM", ".DU")
+    return symbol  # NASDAQ tickers stay as-is
 
-    params["apikey"] = API_KEY
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    url = f"{BASE_URL}/{endpoint}?{query}"
 
-    # Rate limiting
-    if requests_made > 0:
-        time.sleep(REQUEST_DELAY)
-    requests_made += 1
-
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "MarketDashboard/1.0"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode())
-        return data
-    except (urllib.error.URLError, json.JSONDecodeError) as e:
-        print(f"  API error for {endpoint} ({params.get('symbol','')}): {e}")
-        return None
+def to_display_symbol(symbol):
+    """Strip exchange suffixes for display."""
+    for suffix in [".BSE", ".XADS", ".XDFM"]:
+        symbol = symbol.replace(suffix, "")
+    return symbol
 
 
 def safe_float(val, default=None):
@@ -110,57 +105,147 @@ def safe_float(val, default=None):
         return default
 
 
-def fetch_batch_quotes(symbols):
-    """Fetch price quotes for a batch of symbols."""
+def fetch_yfinance_data(symbols):
+    """
+    Fetch quote + fundamental data for a list of symbols using yfinance.
+    Returns dict: {original_symbol: {metrics...}}
+    """
+    import yfinance as yf
+
     results = {}
     total = len(symbols)
 
-    for i, symbol in enumerate(symbols):
-        print(f"  Quote {i+1}/{total}: {symbol}")
-        data = api_call("quote", {"symbol": symbol})
-        if data and "code" not in data:
-            results[symbol] = data
-        elif data and data.get("code") == 429:
-            print("  Rate limited! Waiting 60s...")
-            time.sleep(60)
-            data = api_call("quote", {"symbol": symbol})
-            if data and "code" not in data:
-                results[symbol] = data
+    # Process in small batches to handle errors gracefully
+    batch_size = 10
+    for batch_start in range(0, total, batch_size):
+        batch = symbols[batch_start:batch_start + batch_size]
+        yf_symbols = [to_yfinance_symbol(s) for s in batch]
+
+        print(f"  Fetching batch {batch_start // batch_size + 1}/{(total + batch_size - 1) // batch_size}: {len(batch)} stocks...")
+
+        for i, (orig_sym, yf_sym) in enumerate(zip(batch, yf_symbols)):
+            try:
+                ticker = yf.Ticker(yf_sym)
+                info = ticker.info
+
+                if not info or info.get("trailingPegRatio") is None and info.get("currentPrice") is None and info.get("regularMarketPrice") is None:
+                    # Check if we got any useful data at all
+                    price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+                    if not price:
+                        print(f"    {yf_sym}: No data available")
+                        continue
+
+                results[orig_sym] = extract_from_yfinance(info)
+                name = info.get("shortName", info.get("longName", yf_sym))
+                print(f"    {yf_sym}: OK ({name})")
+
+            except Exception as e:
+                print(f"    {yf_sym}: Error - {e}")
+                continue
+
+        # Small delay between batches to be respectful
+        if batch_start + batch_size < total:
+            time.sleep(1)
 
     return results
 
 
-def fetch_statistics(symbol):
-    """Fetch fundamental statistics for a single symbol."""
-    data = api_call("statistics", {"symbol": symbol})
-    if data and "code" not in data:
-        return data
-    return None
+def extract_from_yfinance(info):
+    """Extract our standard metrics from yfinance ticker.info dict."""
+    result = {
+        "pe_ratio": None,
+        "eps_growth": None,
+        "dividend_yield": None,
+        "revenue_growth": None,
+        "profit_margin": None,
+        "debt_equity": None,
+        "market_cap": None,
+        "52w_high": None,
+        "52w_low": None,
+        "beta": None,
+        "price": None,
+        "change": None,
+        "percent_change": None,
+        "volume": None,
+        "name": "",
+        "exchange": "",
+        "currency": "USD",
+    }
 
+    # Basic quote data
+    result["price"] = safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+    prev_close = safe_float(info.get("previousClose") or info.get("regularMarketPreviousClose"))
+    if result["price"] and prev_close:
+        result["change"] = round(result["price"] - prev_close, 4)
+        if prev_close > 0:
+            result["percent_change"] = round((result["change"] / prev_close) * 100, 4)
 
-def fetch_fundamentals(symbols):
-    """Fetch statistics/fundamentals for all symbols."""
-    results = {}
-    total = len(symbols)
+    result["volume"] = safe_float(info.get("volume") or info.get("regularMarketVolume"))
+    result["name"] = info.get("shortName") or info.get("longName") or ""
+    result["exchange"] = info.get("exchange", "")
+    result["currency"] = info.get("currency", "USD")
 
-    for i, symbol in enumerate(symbols):
-        print(f"  Fundamentals {i+1}/{total}: {symbol}")
-        data = fetch_statistics(symbol)
-        if data:
-            results[symbol] = data
-        elif data is None:
-            pass
+    # Fundamentals
+    result["pe_ratio"] = safe_float(info.get("trailingPE"))
+    result["market_cap"] = safe_float(info.get("marketCap"))
+    result["52w_high"] = safe_float(info.get("fiftyTwoWeekHigh"))
+    result["52w_low"] = safe_float(info.get("fiftyTwoWeekLow"))
+    result["beta"] = safe_float(info.get("beta"))
 
-    return results
+    # Dividend yield (yfinance returns as decimal, e.g., 0.005 = 0.5%)
+    div_yield = safe_float(info.get("dividendYield"))
+    if div_yield is not None:
+        result["dividend_yield"] = round(div_yield * 100, 2)
+
+    # Profit margin (yfinance returns as decimal, e.g., 0.27 = 27%)
+    pm = safe_float(info.get("profitMargins"))
+    if pm is not None:
+        result["profit_margin"] = round(pm * 100, 2)
+
+    # Debt to equity (yfinance returns as percentage, e.g., 150 = 1.5 ratio)
+    de = safe_float(info.get("debtToEquity"))
+    if de is not None:
+        result["debt_equity"] = round(de / 100, 2)
+
+    # EPS growth - use earningsGrowth (quarterly YoY) or earningsQuarterlyGrowth
+    eps_g = safe_float(info.get("earningsGrowth"))
+    if eps_g is not None:
+        result["eps_growth"] = round(eps_g * 100, 2)
+    else:
+        eps_g = safe_float(info.get("earningsQuarterlyGrowth"))
+        if eps_g is not None:
+            result["eps_growth"] = round(eps_g * 100, 2)
+
+    # Revenue growth (yfinance returns as decimal)
+    rev_g = safe_float(info.get("revenueGrowth"))
+    if rev_g is not None:
+        result["revenue_growth"] = round(rev_g * 100, 2)
+
+    return result
 
 
 def compute_signal(stock):
     """
     Compute buy/sell signal based on fundamental metrics.
-    Scoring (0-100): P/E(25) + EPS Growth(25) + Div Yield(15) + Rev Growth(15) + Margin(10) + D/E(10)
+
+    Scoring (0-100 scale):
+    - P/E Ratio:       0-25 pts (lower is better, relative to sector)
+    - EPS Growth:       0-25 pts (higher is better)
+    - Dividend Yield:   0-15 pts (higher is better, up to a point)
+    - Revenue Growth:   0-15 pts (higher is better)
+    - Profit Margin:    0-10 pts (higher is better)
+    - Debt/Equity:      0-10 pts (lower is better)
+
+    Signal thresholds:
+    - 70+: STRONG BUY
+    - 55-69: BUY
+    - 40-54: HOLD
+    - 25-39: SELL
+    - 0-24: STRONG SELL
     """
     score = 0
     details = {}
+    has_any_data = False
 
     pe = stock.get("pe_ratio")
     eps_growth = stock.get("eps_growth")
@@ -169,206 +254,169 @@ def compute_signal(stock):
     profit_margin = stock.get("profit_margin")
     debt_equity = stock.get("debt_equity")
 
+    # P/E Ratio scoring (0-25)
     if pe is not None:
-        if pe < 0: pe_score = 0
-        elif pe < 10: pe_score = 25
-        elif pe < 15: pe_score = 22
-        elif pe < 20: pe_score = 18
-        elif pe < 25: pe_score = 14
-        elif pe < 35: pe_score = 8
-        elif pe < 50: pe_score = 4
-        else: pe_score = 0
+        has_any_data = True
+        if pe < 0:
+            pe_score = 0
+        elif pe < 10:
+            pe_score = 25
+        elif pe < 15:
+            pe_score = 22
+        elif pe < 20:
+            pe_score = 18
+        elif pe < 25:
+            pe_score = 14
+        elif pe < 35:
+            pe_score = 8
+        elif pe < 50:
+            pe_score = 4
+        else:
+            pe_score = 0
         score += pe_score
         details["pe_score"] = pe_score
 
+    # EPS Growth scoring (0-25)
     if eps_growth is not None:
-        if eps_growth > 30: eg_score = 25
-        elif eps_growth > 20: eg_score = 22
-        elif eps_growth > 15: eg_score = 18
-        elif eps_growth > 10: eg_score = 14
-        elif eps_growth > 5: eg_score = 10
-        elif eps_growth > 0: eg_score = 5
-        else: eg_score = 0
+        has_any_data = True
+        if eps_growth > 30:
+            eg_score = 25
+        elif eps_growth > 20:
+            eg_score = 22
+        elif eps_growth > 15:
+            eg_score = 18
+        elif eps_growth > 10:
+            eg_score = 14
+        elif eps_growth > 5:
+            eg_score = 10
+        elif eps_growth > 0:
+            eg_score = 5
+        else:
+            eg_score = 0
         score += eg_score
         details["eps_growth_score"] = eg_score
 
+    # Dividend Yield scoring (0-15)
     if div_yield is not None:
-        if div_yield > 6: dy_score = 8
-        elif div_yield > 4: dy_score = 15
-        elif div_yield > 3: dy_score = 13
-        elif div_yield > 2: dy_score = 10
-        elif div_yield > 1: dy_score = 7
-        elif div_yield > 0: dy_score = 3
-        else: dy_score = 0
+        has_any_data = True
+        if div_yield > 6:
+            dy_score = 8
+        elif div_yield > 4:
+            dy_score = 15
+        elif div_yield > 3:
+            dy_score = 13
+        elif div_yield > 2:
+            dy_score = 10
+        elif div_yield > 1:
+            dy_score = 7
+        elif div_yield > 0:
+            dy_score = 3
+        else:
+            dy_score = 0
         score += dy_score
         details["dividend_score"] = dy_score
 
+    # Revenue Growth scoring (0-15)
     if rev_growth is not None:
-        if rev_growth > 25: rg_score = 15
-        elif rev_growth > 15: rg_score = 12
-        elif rev_growth > 10: rg_score = 10
-        elif rev_growth > 5: rg_score = 7
-        elif rev_growth > 0: rg_score = 3
-        else: rg_score = 0
+        has_any_data = True
+        if rev_growth > 25:
+            rg_score = 15
+        elif rev_growth > 15:
+            rg_score = 12
+        elif rev_growth > 10:
+            rg_score = 10
+        elif rev_growth > 5:
+            rg_score = 7
+        elif rev_growth > 0:
+            rg_score = 3
+        else:
+            rg_score = 0
         score += rg_score
         details["revenue_growth_score"] = rg_score
 
+    # Profit Margin scoring (0-10)
     if profit_margin is not None:
-        if profit_margin > 25: pm_score = 10
-        elif profit_margin > 15: pm_score = 8
-        elif profit_margin > 10: pm_score = 6
-        elif profit_margin > 5: pm_score = 4
-        elif profit_margin > 0: pm_score = 2
-        else: pm_score = 0
+        has_any_data = True
+        if profit_margin > 25:
+            pm_score = 10
+        elif profit_margin > 15:
+            pm_score = 8
+        elif profit_margin > 10:
+            pm_score = 6
+        elif profit_margin > 5:
+            pm_score = 4
+        elif profit_margin > 0:
+            pm_score = 2
+        else:
+            pm_score = 0
         score += pm_score
         details["profit_margin_score"] = pm_score
 
+    # Debt/Equity scoring (0-10)
     if debt_equity is not None:
-        if debt_equity < 0.3: de_score = 10
-        elif debt_equity < 0.5: de_score = 8
-        elif debt_equity < 1.0: de_score = 6
-        elif debt_equity < 1.5: de_score = 4
-        elif debt_equity < 2.0: de_score = 2
-        else: de_score = 0
+        has_any_data = True
+        if debt_equity < 0.3:
+            de_score = 10
+        elif debt_equity < 0.5:
+            de_score = 8
+        elif debt_equity < 1.0:
+            de_score = 6
+        elif debt_equity < 1.5:
+            de_score = 4
+        elif debt_equity < 2.0:
+            de_score = 2
+        else:
+            de_score = 0
         score += de_score
         details["debt_equity_score"] = de_score
 
-    if score >= 70: signal = "STRONG BUY"
-    elif score >= 55: signal = "BUY"
-    elif score >= 40: signal = "HOLD"
-    elif score >= 25: signal = "SELL"
-    else: signal = "STRONG SELL"
+    # If we have no fundamental data at all, mark as N/A instead of STRONG SELL
+    if not has_any_data:
+        return 0, "NO DATA", details
+
+    # Determine signal
+    if score >= 70:
+        signal = "STRONG BUY"
+    elif score >= 55:
+        signal = "BUY"
+    elif score >= 40:
+        signal = "HOLD"
+    elif score >= 25:
+        signal = "SELL"
+    else:
+        signal = "STRONG SELL"
 
     return score, signal, details
 
 
-def extract_fundamentals(stats_data, quote_data):
-    """Extract key fundamental metrics from Twelve Data API responses."""
-    result = {
-        "pe_ratio": None, "eps_growth": None, "dividend_yield": None,
-        "revenue_growth": None, "profit_margin": None, "debt_equity": None,
-        "market_cap": None, "52w_high": None, "52w_low": None, "beta": None,
-    }
-
-    if quote_data:
-        result["price"] = safe_float(quote_data.get("close"))
-        result["change"] = safe_float(quote_data.get("change"))
-        result["percent_change"] = safe_float(quote_data.get("percent_change"))
-        result["volume"] = safe_float(quote_data.get("volume"))
-        result["name"] = quote_data.get("name", "")
-        result["exchange"] = quote_data.get("exchange", "")
-        result["currency"] = quote_data.get("currency", "")
-        result["52w_high"] = safe_float(quote_data.get("fifty_two_week", {}).get("high"))
-        result["52w_low"] = safe_float(quote_data.get("fifty_two_week", {}).get("low"))
-
-    if stats_data:
-        # Twelve Data nests everything under "statistics" key
-        stats = stats_data.get("statistics", stats_data)
-
-        val = stats.get("valuations_metrics", {})
-        if not val:
-            val = stats.get("valuation_metrics", {})
-        result["pe_ratio"] = safe_float(val.get("trailing_pe"))
-        result["market_cap"] = safe_float(val.get("market_capitalization"))
-
-        fin = stats.get("financials", {})
-        if fin:
-            bal = fin.get("balance_sheet", {})
-            inc = fin.get("income_statement", {})
-
-            # Profit margin - directly available on financials level
-            pm = safe_float(fin.get("profit_margin"))
-            if pm is not None:
-                result["profit_margin"] = round(pm * 100, 2)
-            elif inc:
-                rev = safe_float(inc.get("revenue_ttm"))
-                net_inc = safe_float(inc.get("net_income_to_common_ttm"))
-                if rev and net_inc and rev > 0:
-                    result["profit_margin"] = round((net_inc / rev) * 100, 2)
-
-            # Debt to equity - use pre-computed ratio if available
-            if bal:
-                de_pct = safe_float(bal.get("total_debt_to_equity_mrq"))
-                if de_pct is not None:
-                    result["debt_equity"] = round(de_pct / 100, 2)
-                else:
-                    total_debt = safe_float(bal.get("total_debt_mrq") or bal.get("total_debt"))
-                    equity = safe_float(bal.get("shareholders_equity"))
-                    if total_debt is not None and equity and equity > 0:
-                        result["debt_equity"] = round(total_debt / equity, 2)
-
-            # EPS growth from quarterly YoY earnings growth
-            if inc:
-                eps_g = safe_float(inc.get("quarterly_earnings_growth_yoy"))
-                if eps_g is not None:
-                    result["eps_growth"] = round(eps_g * 100, 2)
-
-            # Revenue growth from quarterly revenue growth
-            if inc:
-                rev_g = safe_float(inc.get("quarterly_revenue_growth"))
-                if rev_g is not None:
-                    result["revenue_growth"] = round(rev_g * 100, 2)
-
-        divs = stats.get("dividends_and_splits", {})
-        if divs:
-            result["dividend_yield"] = safe_float(divs.get("forward_annual_dividend_yield"))
-            if result["dividend_yield"]:
-                result["dividend_yield"] = round(result["dividend_yield"] * 100, 2)
-
-        sp = stats.get("stock_price_summary", {})
-        if sp:
-            result["beta"] = safe_float(sp.get("beta"))
-            if not result["52w_high"]:
-                result["52w_high"] = safe_float(sp.get("fifty_two_week_high"))
-            if not result["52w_low"]:
-                result["52w_low"] = safe_float(sp.get("fifty_two_week_low"))
-
-        # EPS growth fallback
-        if result["eps_growth"] is None:
-            earn = stats.get("earnings", {})
-            if earn:
-                eps_curr = safe_float(earn.get("earnings_per_share"))
-                eps_prev = safe_float(earn.get("earnings_per_share_previous"))
-                if eps_curr is not None and eps_prev is not None and eps_prev != 0:
-                    result["eps_growth"] = round(((eps_curr - eps_prev) / abs(eps_prev)) * 100, 2)
-
-        # Revenue growth fallback
-        if result["revenue_growth"] is None:
-            rev_data = stats.get("revenue", {})
-            if rev_data:
-                rev_curr = safe_float(rev_data.get("revenue_ttm"))
-                rev_prev = safe_float(rev_data.get("revenue_previous_year"))
-                if rev_curr is not None and rev_prev is not None and rev_prev > 0:
-                    result["revenue_growth"] = round(((rev_curr - rev_prev) / rev_prev) * 100, 2)
-
-    return result
-
-
 def process_market(market_name, symbols):
-    """Process all stocks in a market."""
+    """Process all stocks in a market using yfinance."""
     print(f"\n{'='*60}")
     print(f"Processing {market_name} ({len(symbols)} stocks)")
     print(f"{'='*60}")
 
     stocks = []
 
-    print(f"\nFetching quotes for {market_name}...")
-    quotes = fetch_batch_quotes(symbols)
-    print(f"  Got {len(quotes)} quotes")
+    # Fetch all data via yfinance (quotes + fundamentals in one go)
+    print(f"\nFetching data for {market_name} via yfinance...")
+    stock_data = fetch_yfinance_data(symbols)
+    print(f"  Got data for {len(stock_data)} / {len(symbols)} stocks")
 
-    print(f"\nFetching fundamentals for {market_name}...")
-    fundamentals = fetch_fundamentals(symbols)
-    print(f"  Got {len(fundamentals)} fundamental records")
-
+    # Process each stock
     for symbol in symbols:
-        quote = quotes.get(symbol)
-        stats = fundamentals.get(symbol)
-        if not quote:
+        metrics = stock_data.get(symbol)
+        if not metrics:
             continue
-        metrics = extract_fundamentals(stats, quote)
+
+        # Need at least a price to include the stock
+        if not metrics.get("price"):
+            continue
+
+        # Compute signal
         score, signal, score_details = compute_signal(metrics)
-        stock_data = {
-            "symbol": symbol.replace(".BSE", "").replace(".XADS", "").replace(".XDFM", ""),
+
+        stock_entry = {
+            "symbol": to_display_symbol(symbol),
             "raw_symbol": symbol,
             "name": metrics.get("name", symbol),
             "market": market_name,
@@ -392,9 +440,11 @@ def process_market(market_name, symbols):
             "signal": signal,
             "score_details": score_details,
         }
-        stocks.append(stock_data)
+        stocks.append(stock_entry)
 
+    # Sort by score descending
     stocks.sort(key=lambda x: x.get("score", 0), reverse=True)
+
     print(f"\n  Processed {len(stocks)} stocks for {market_name}")
     signal_counts = {}
     for s in stocks:
@@ -402,6 +452,7 @@ def process_market(market_name, symbols):
         signal_counts[sig] = signal_counts.get(sig, 0) + 1
     for sig, count in sorted(signal_counts.items()):
         print(f"    {sig}: {count}")
+
     return stocks
 
 
@@ -415,13 +466,15 @@ def send_email_alert(all_stocks):
         print("\nEmail credentials not set, skipping alert.")
         return
 
+    # Filter for actionable signals
     strong_buys = [s for s in all_stocks if s["signal"] == "STRONG BUY"]
     buys = [s for s in all_stocks if s["signal"] == "BUY"]
     strong_sells = [s for s in all_stocks if s["signal"] == "STRONG SELL"]
     sells = [s for s in all_stocks if s["signal"] == "SELL"]
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    body = f"Market Dashboard Scan - {now}\n"
+
+    body = f"Market Dashboard Scan — {now}\n"
     body += "=" * 50 + "\n\n"
 
     if strong_buys:
@@ -460,7 +513,7 @@ def send_email_alert(all_stocks):
     from email.mime.text import MIMEText
 
     msg = MIMEText(body)
-    msg["Subject"] = f"Market Dashboard Alert - {len(strong_buys)} Strong Buys, {len(strong_sells)} Strong Sells"
+    msg["Subject"] = f"Market Dashboard Alert — {len(strong_buys)} Strong Buys, {len(strong_sells)} Strong Sells"
     msg["From"] = email_user
     msg["To"] = email_to
 
@@ -474,26 +527,35 @@ def send_email_alert(all_stocks):
 
 
 def main():
-    if not API_KEY:
-        print("ERROR: TWELVEDATA_API_KEY environment variable not set!")
-        print("Get your free key at https://twelvedata.com/pricing")
-        return
+    print(f"Market Dashboard Scanner — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"Data source: yfinance (Yahoo Finance)")
 
-    print(f"Market Dashboard Scanner - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"API Key: ...{API_KEY[-4:]}")
+    # Check yfinance is available
+    try:
+        import yfinance
+        print(f"yfinance version: {yfinance.__version__}")
+    except ImportError:
+        print("ERROR: yfinance not installed! Run: pip install yfinance")
+        sys.exit(1)
 
     all_stocks = []
 
-    # Free tier: Top 50 per market = ~300 calls = ~38 min
+    # yfinance has no rate limits like Twelve Data, so we can process all stocks
+    # Each stock takes ~1-2s, so 250 stocks ≈ 5-8 minutes total
+
+    # NASDAQ — top 50
     nasdaq_stocks = process_market("NASDAQ", NASDAQ_TOP_100[:50])
     all_stocks.extend(nasdaq_stocks)
 
+    # BSE India — top 50
     bse_stocks = process_market("BSE", BSE_TOP_100[:50])
     all_stocks.extend(bse_stocks)
 
+    # UAE — all 50
     uae_stocks = process_market("UAE", UAE_TOP_STOCKS)
     all_stocks.extend(uae_stocks)
 
+    # Save results
     scan_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     output = {
@@ -510,14 +572,18 @@ def main():
             "hold": len([s for s in all_stocks if s["signal"] == "HOLD"]),
             "sell": len([s for s in all_stocks if s["signal"] == "SELL"]),
             "strong_sell": len([s for s in all_stocks if s["signal"] == "STRONG SELL"]),
+            "no_data": len([s for s in all_stocks if s["signal"] == "NO DATA"]),
         }
     }
 
+    # Save to data/
     os.makedirs("data", exist_ok=True)
+
     with open("data/dashboard.json", "w") as f:
         json.dump(output, f, indent=2, default=str)
     print(f"\nSaved data/dashboard.json ({len(all_stocks)} stocks)")
 
+    # Update history
     history_file = "data/history.json"
     history = []
     if os.path.exists(history_file):
@@ -538,14 +604,18 @@ def main():
         "top_buys": [{"symbol": s["symbol"], "market": s["market"], "score": s["score"]}
                      for s in sorted(all_stocks, key=lambda x: x["score"], reverse=True)[:5]],
     })
+
+    # Keep 90 days of history
     history = history[-90:]
 
     with open(history_file, "w") as f:
         json.dump(history, f, indent=2, default=str)
     print(f"Updated history ({len(history)} entries)")
 
+    # Send email
     send_email_alert(all_stocks)
-    print(f"\nDone! Total API calls: {requests_made}")
+
+    print(f"\nDone!")
 
 
 if __name__ == "__main__":
