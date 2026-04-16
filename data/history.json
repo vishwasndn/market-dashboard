@@ -70,5 +70,41 @@
         "score": 0
       }
     ]
+  },
+  {
+    "date": "2026-04-16T20:29:35Z",
+    "total": 99,
+    "strong_buy": 9,
+    "buy": 29,
+    "hold": 30,
+    "sell": 25,
+    "strong_sell": 6,
+    "top_buys": [
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 82
+      },
+      {
+        "symbol": "HEROMOTOCO",
+        "market": "BSE",
+        "score": 76
+      },
+      {
+        "symbol": "PYPL",
+        "market": "NASDAQ",
+        "score": 75
+      },
+      {
+        "symbol": "BPCL",
+        "market": "BSE",
+        "score": 75
+      },
+      {
+        "symbol": "GOOGL",
+        "market": "NASDAQ",
+        "score": 73
+      }
+    ]
   }
 ]
