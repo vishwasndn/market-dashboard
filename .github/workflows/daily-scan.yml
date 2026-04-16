@@ -1,0 +1,44 @@
+name: Market Dashboard Scanner
+
+on:
+  schedule:
+    # Run once daily after all 3 markets close
+    # BSE closes 3:30 PM IST = 10:00 UTC
+    # UAE closes 2:00 PM GST = 10:00 UTC
+    # NASDAQ closes 4:00 PM ET = 20:00 UTC
+    # Run at 21:00 UTC (5 PM ET) to capture all markets
+    - cron: '0 21 * * 1-5'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # Scanner takes ~75 min on free tier
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run scanner
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python scanner.py
+
+      - name: Commit and push data
+        run: |
+          git config user.name "Market Dashboard Bot"
+          git config user.email "bot@market-dashboard"
+          git add data/
+          git diff --staged --quiet || git commit -m "Scan: $(date +%Y-%m-%d_%H:%M)"
+          git push
