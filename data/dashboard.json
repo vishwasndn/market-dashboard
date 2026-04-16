@@ -1,0 +1,16 @@
+{
+  "scan_time": "2026-04-16T00:00:00Z",
+  "total_stocks": 0,
+  "markets": {
+    "NASDAQ": [],
+    "BSE": [],
+    "UAE": []
+  },
+  "summary": {
+    "strong_buy": 0,
+    "buy": 0,
+    "hold": 0,
+    "sell": 0,
+    "strong_sell": 0
+  }
+}
