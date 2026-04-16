@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "date": "2026-04-16T17:59:25Z",
+    "total": 51,
+    "strong_buy": 0,
+    "buy": 0,
+    "hold": 0,
+    "sell": 0,
+    "strong_sell": 51,
+    "top_buys": [
+      {
+        "symbol": "AAPL",
+        "market": "NASDAQ",
+        "score": 0
+      },
+      {
+        "symbol": "MSFT",
+        "market": "NASDAQ",
+        "score": 0
+      },
+      {
+        "symbol": "GOOGL",
+        "market": "NASDAQ",
+        "score": 0
+      },
+      {
+        "symbol": "AMZN",
+        "market": "NASDAQ",
+        "score": 0
+      },
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 0
+      }
+    ]
+  }
+]
