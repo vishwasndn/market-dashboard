@@ -1,10 +1,17 @@
 """
-Multi-Market Stock Dashboard Scanner
-Fetches top stocks from NASDAQ, BSE (India), and UAE (ADX/DFM)
-Scores them using fundamental metrics and generates buy/sell signals.
+Multi-Market Stock Dashboard Scanner (v2 — Sector & Growth Enhanced)
 
-Primary data source: yfinance (no API key needed, no rate limits)
-Fallback for quotes: Twelve Data API (free tier: 800 calls/day, 8/min)
+Fetches top stocks from NASDAQ, BSE (India), and UAE (ADX/DFM).
+Scores them using fundamental metrics with sector-relative analysis
+and long-term growth potential indicators.
+
+Data source: yfinance (no API key needed, no rate limits)
+
+Scoring breakdown (0-100):
+  Value    (25 pts): Sector-relative P/E (15) + PEG Ratio (10)
+  Growth   (30 pts): EPS Growth (15) + Revenue Growth (15)
+  Quality  (25 pts): Profit Margin (10) + ROE (10) + Debt/Equity (5)
+  Outlook  (20 pts): Dividend Yield (5) + Analyst Rating (10) + Target Upside (5)
 """
 
 import os
@@ -12,138 +19,131 @@ import json
 import time
 import sys
 from datetime import datetime, timezone
+from statistics import median
 
 # ---------------------------------------------------------------------------
-# STOCK UNIVERSES — Top 100 by market cap for each market
+# STOCK UNIVERSES
 # ---------------------------------------------------------------------------
 
 NASDAQ_TOP_100 = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AVGO", "COST", "NFLX",
-    "AMD", "PEP", "ADBE", "CSCO", "TMUS", "INTC", "INTU", "CMCSA", "TXN", "QCOM",
-    "AMGN", "ISRG", "HON", "AMAT", "BKNG", "SBUX", "VRTX", "LRCX", "ADI", "GILD",
-    "MDLZ", "REGN", "MU", "PANW", "KLAC", "SNPS", "CDNS", "MELI", "PYPL", "CTAS",
-    "MAR", "CRWD", "ORLY", "ABNB", "MNST", "CSX", "MRVL", "FTNT", "WDAY", "NXPI",
-    "DASH", "PCAR", "DXCM", "ROST", "AEP", "MCHP", "CPRT", "ODFL", "KDP", "PAYX",
-    "IDXX", "TTD", "KHC", "CHTR", "FAST", "VRSK", "CTSH", "EXC", "CSGP", "GEHC",
-    "FANG", "EA", "BKR", "DDOG", "XEL", "CCEP", "TEAM", "ANSS", "ON", "CDW",
-    "ZS", "ILMN", "BIIB", "WBD", "DLTR", "MRNA", "CEG", "GFS", "ARM", "SMCI",
-    "COIN", "MSTR", "PLTR", "APP", "HOOD", "ROKU", "LULU", "AZN", "ASML", "PDD"
+    "AAPL","MSFT","GOOGL","AMZN","NVDA","META","TSLA","AVGO","COST","NFLX",
+    "AMD","PEP","ADBE","CSCO","TMUS","INTC","INTU","CMCSA","TXN","QCOM",
+    "AMGN","ISRG","HON","AMAT","BKNG","SBUX","VRTX","LRCX","ADI","GILD",
+    "MDLZ","REGN","MU","PANW","KLAC","SNPS","CDNS","MELI","PYPL","CTAS",
+    "MAR","CRWD","ORLY","ABNB","MNST","CSX","MRVL","FTNT","WDAY","NXPI",
+    "DASH","PCAR","DXCM","ROST","AEP","MCHP","CPRT","ODFL","KDP","PAYX",
+    "IDXX","TTD","KHC","CHTR","FAST","VRSK","CTSH","EXC","CSGP","GEHC",
+    "FANG","EA","BKR","DDOG","XEL","CCEP","TEAM","ANSS","ON","CDW",
+    "ZS","ILMN","BIIB","WBD","DLTR","MRNA","CEG","GFS","ARM","SMCI",
+    "COIN","MSTR","PLTR","APP","HOOD","ROKU","LULU","AZN","ASML","PDD",
 ]
 
 BSE_TOP_100 = [
-    "RELIANCE.BSE", "TCS.BSE", "HDFCBANK.BSE", "INFY.BSE", "ICICIBANK.BSE",
-    "HINDUNILVR.BSE", "BHARTIARTL.BSE", "SBIN.BSE", "ITC.BSE", "BAJFINANCE.BSE",
-    "LICI.BSE", "LT.BSE", "HCLTECH.BSE", "KOTAKBANK.BSE", "AXISBANK.BSE",
-    "MARUTI.BSE", "SUNPHARMA.BSE", "TITAN.BSE", "ONGC.BSE", "NTPC.BSE",
-    "ADANIENT.BSE", "ADANIPORTS.BSE", "ULTRACEMCO.BSE", "ASIANPAINT.BSE", "BAJAJFINSV.BSE",
-    "WIPRO.BSE", "COALINDIA.BSE", "POWERGRID.BSE", "TATAMOTORS.BSE", "JSWSTEEL.BSE",
-    "M&M.BSE", "NESTLEIND.BSE", "TATASTEEL.BSE", "TECHM.BSE", "HDFCLIFE.BSE",
-    "BAJAJ-AUTO.BSE", "SBILIFE.BSE", "INDUSINDBK.BSE", "GRASIM.BSE", "DIVISLAB.BSE",
-    "DRREDDY.BSE", "CIPLA.BSE", "BPCL.BSE", "BRITANNIA.BSE", "APOLLOHOSP.BSE",
-    "HINDALCO.BSE", "EICHERMOT.BSE", "HEROMOTOCO.BSE", "TATACONSUM.BSE", "VEDL.BSE",
-    "ADANIGREEN.BSE", "DABUR.BSE", "GODREJCP.BSE", "HAVELLS.BSE", "PIDILITIND.BSE",
-    "SIEMENS.BSE", "DLF.BSE", "AMBUJACEM.BSE", "ABB.BSE", "BANKBARODA.BSE",
-    "ICICIPRULI.BSE", "INDIGO.BSE", "TORNTPHARM.BSE", "SRF.BSE", "SBICARD.BSE",
-    "CHOLAFIN.BSE", "IOC.BSE", "TATAPOWER.BSE", "PNB.BSE", "MARICO.BSE",
-    "BERGEPAINT.BSE", "MUTHOOTFIN.BSE", "CANBK.BSE", "PIIND.BSE", "PERSISTENT.BSE",
-    "LTIM.BSE", "MAXHEALTH.BSE", "HAL.BSE", "BHEL.BSE", "IRCTC.BSE",
-    "ZOMATO.BSE", "PAYTM.BSE", "NYKAA.BSE", "POLICYBZR.BSE", "DMART.BSE",
-    "TRENT.BSE", "JSWENERGY.BSE", "RECLTD.BSE", "PFC.BSE", "NHPC.BSE",
-    "SAIL.BSE", "GAIL.BSE", "PETRONET.BSE", "CONCOR.BSE", "MOTHERSON.BSE",
-    "VOLTAS.BSE", "AUROPHARMA.BSE", "LUPIN.BSE", "PAGEIND.BSE", "MFSL.BSE"
+    "RELIANCE.BSE","TCS.BSE","HDFCBANK.BSE","INFY.BSE","ICICIBANK.BSE",
+    "HINDUNILVR.BSE","BHARTIARTL.BSE","SBIN.BSE","ITC.BSE","BAJFINANCE.BSE",
+    "LICI.BSE","LT.BSE","HCLTECH.BSE","KOTAKBANK.BSE","AXISBANK.BSE",
+    "MARUTI.BSE","SUNPHARMA.BSE","TITAN.BSE","ONGC.BSE","NTPC.BSE",
+    "ADANIENT.BSE","ADANIPORTS.BSE","ULTRACEMCO.BSE","ASIANPAINT.BSE",
+    "BAJAJFINSV.BSE","WIPRO.BSE","COALINDIA.BSE","POWERGRID.BSE",
+    "TATAMOTORS.BSE","JSWSTEEL.BSE","M&M.BSE","NESTLEIND.BSE",
+    "TATASTEEL.BSE","TECHM.BSE","HDFCLIFE.BSE","BAJAJ-AUTO.BSE",
+    "SBILIFE.BSE","INDUSINDBK.BSE","GRASIM.BSE","DIVISLAB.BSE",
+    "DRREDDY.BSE","CIPLA.BSE","BPCL.BSE","BRITANNIA.BSE",
+    "APOLLOHOSP.BSE","HINDALCO.BSE","EICHERMOT.BSE","HEROMOTOCO.BSE",
+    "TATACONSUM.BSE","VEDL.BSE","ADANIGREEN.BSE","DABUR.BSE",
+    "GODREJCP.BSE","HAVELLS.BSE","PIDILITIND.BSE","SIEMENS.BSE",
+    "DLF.BSE","AMBUJACEM.BSE","ABB.BSE","BANKBARODA.BSE",
+    "ICICIPRULI.BSE","INDIGO.BSE","TORNTPHARM.BSE","SRF.BSE",
+    "SBICARD.BSE","CHOLAFIN.BSE","IOC.BSE","TATAPOWER.BSE",
+    "PNB.BSE","MARICO.BSE","BERGEPAINT.BSE","MUTHOOTFIN.BSE",
+    "CANBK.BSE","PIIND.BSE","PERSISTENT.BSE","LTIM.BSE",
+    "MAXHEALTH.BSE","HAL.BSE","BHEL.BSE","IRCTC.BSE",
+    "ZOMATO.BSE","PAYTM.BSE","NYKAA.BSE","POLICYBZR.BSE",
+    "DMART.BSE","TRENT.BSE","JSWENERGY.BSE","RECLTD.BSE",
+    "PFC.BSE","NHPC.BSE","SAIL.BSE","GAIL.BSE",
+    "PETRONET.BSE","CONCOR.BSE","MOTHERSON.BSE","VOLTAS.BSE",
+    "AUROPHARMA.BSE","LUPIN.BSE","PAGEIND.BSE","MFSL.BSE",
 ]
 
 UAE_TOP_STOCKS = [
-    # ADX (Abu Dhabi) - exchange code XADS
-    "FAB.XADS", "ETISALAT.XADS", "ADNOCDIST.XADS", "ALDAR.XADS", "IHC.XADS",
-    "ADCB.XADS", "TAQA.XADS", "DANA.XADS", "ADIB.XADS", "MULTIPLY.XADS",
-    "ADNOCDRILL.XADS", "FERTIGLB.XADS", "PRESIGHT.XADS", "ALPHADHABI.XADS", "ADNOCLOG.XADS",
-    "BUROOJ.XADS", "ESG.XADS", "QABC.XADS", "JULPHAR.XADS", "RAKPROP.XADS",
-    "ADAVIATION.XADS", "NMDC.XADS", "AGTHIA.XADS", "PALMS.XADS", "RAK.XADS",
-    # DFM (Dubai) - exchange code XDFM
-    "EMAAR.XDFM", "DIB.XDFM", "DFM.XDFM", "DEWA.XDFM", "EMIRATESNBD.XDFM",
-    "SALIK.XDFM", "DAMAC.XDFM", "DUBAIISLAMIC.XDFM", "MASHR.XDFM", "DEYAAR.XDFM",
-    "EMAARDEV.XDFM", "TECOM.XDFM", "SHUAA.XDFM", "DUBAIINVEST.XDFM", "GFH.XDFM",
-    "AMLAK.XDFM", "TABREED.XDFM", "ARAMEX.XDFM", "EIBANK.XDFM", "ENBD.XDFM",
-    "DNIR.XDFM", "PARKIN.XDFM", "TALABAT.XDFM", "SPINNEYS.XDFM", "LULU.XDFM"
+    "FAB.XADS","ETISALAT.XADS","ADNOCDIST.XADS","ALDAR.XADS","IHC.XADS",
+    "ADCB.XADS","TAQA.XADS","DANA.XADS","ADIB.XADS","MULTIPLY.XADS",
+    "ADNOCDRILL.XADS","FERTIGLB.XADS","PRESIGHT.XADS","ALPHADHABI.XADS",
+    "ADNOCLOG.XADS","BUROOJ.XADS","ESG.XADS","QABC.XADS","JULPHAR.XADS",
+    "RAKPROP.XADS","ADAVIATION.XADS","NMDC.XADS","AGTHIA.XADS","PALMS.XADS",
+    "RAK.XADS",
+    "EMAAR.XDFM","DIB.XDFM","DFM.XDFM","DEWA.XDFM","EMIRATESNBD.XDFM",
+    "SALIK.XDFM","DAMAC.XDFM","DUBAIISLAMIC.XDFM","MASHR.XDFM","DEYAAR.XDFM",
+    "EMAARDEV.XDFM","TECOM.XDFM","SHUAA.XDFM","DUBAIINVEST.XDFM","GFH.XDFM",
+    "AMLAK.XDFM","TABREED.XDFM","ARAMEX.XDFM","EIBANK.XDFM","ENBD.XDFM",
+    "DNIR.XDFM","PARKIN.XDFM","TALABAT.XDFM","SPINNEYS.XDFM","LULU.XDFM",
 ]
 
 # ---------------------------------------------------------------------------
-# Yahoo Finance ticker mapping
-# yfinance uses different suffixes than our internal format:
-#   BSE: .BO (Bombay)    UAE ADX: .AD    UAE DFM: .DU
+# Helpers
 # ---------------------------------------------------------------------------
 
 def to_yfinance_symbol(symbol):
-    """Convert our internal symbol format to yfinance format."""
     if symbol.endswith(".BSE"):
         return symbol.replace(".BSE", ".BO")
     elif symbol.endswith(".XADS"):
         return symbol.replace(".XADS", ".AD")
     elif symbol.endswith(".XDFM"):
         return symbol.replace(".XDFM", ".DU")
-    return symbol  # NASDAQ tickers stay as-is
-
+    return symbol
 
 def to_display_symbol(symbol):
-    """Strip exchange suffixes for display."""
     for suffix in [".BSE", ".XADS", ".XDFM"]:
         symbol = symbol.replace(suffix, "")
     return symbol
 
-
 def safe_float(val, default=None):
-    """Safely convert to float, handling None, NaN, 'N/A', etc."""
     if val is None:
         return default
     try:
         f = float(val)
-        if f != f or abs(f) == float('inf'):  # NaN or Inf
+        if f != f or abs(f) == float('inf'):
             return default
         return f
     except (ValueError, TypeError):
         return default
 
+# ---------------------------------------------------------------------------
+# Data fetching
+# ---------------------------------------------------------------------------
 
 def fetch_yfinance_data(symbols):
-    """
-    Fetch quote + fundamental data for a list of symbols using yfinance.
-    Returns dict: {original_symbol: {metrics...}}
-    """
+    """Fetch quote + fundamental data using yfinance. Returns {symbol: metrics}."""
     import yfinance as yf
-
     results = {}
     total = len(symbols)
-
-    # Process in small batches to handle errors gracefully
     batch_size = 10
+
     for batch_start in range(0, total, batch_size):
         batch = symbols[batch_start:batch_start + batch_size]
         yf_symbols = [to_yfinance_symbol(s) for s in batch]
-
         print(f"  Fetching batch {batch_start // batch_size + 1}/{(total + batch_size - 1) // batch_size}: {len(batch)} stocks...")
 
-        for i, (orig_sym, yf_sym) in enumerate(zip(batch, yf_symbols)):
+        for orig_sym, yf_sym in zip(batch, yf_symbols):
             try:
                 ticker = yf.Ticker(yf_sym)
                 info = ticker.info
+                if not info:
+                    print(f"    {yf_sym}: No data available")
+                    continue
 
-                if not info or info.get("trailingPegRatio") is None and info.get("currentPrice") is None and info.get("regularMarketPrice") is None:
-                    # Check if we got any useful data at all
-                    price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
-                    if not price:
-                        print(f"    {yf_sym}: No data available")
-                        continue
+                price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+                if not price:
+                    print(f"    {yf_sym}: No price data")
+                    continue
 
                 results[orig_sym] = extract_from_yfinance(info)
                 name = info.get("shortName", info.get("longName", yf_sym))
                 print(f"    {yf_sym}: OK ({name})")
-
             except Exception as e:
                 print(f"    {yf_sym}: Error - {e}")
                 continue
 
-        # Small delay between batches to be respectful
         if batch_start + batch_size < total:
             time.sleep(1)
 
@@ -151,172 +151,269 @@ def fetch_yfinance_data(symbols):
 
 
 def extract_from_yfinance(info):
-    """Extract our standard metrics from yfinance ticker.info dict."""
-    result = {
-        "pe_ratio": None,
-        "eps_growth": None,
-        "dividend_yield": None,
-        "revenue_growth": None,
-        "profit_margin": None,
-        "debt_equity": None,
-        "market_cap": None,
-        "52w_high": None,
-        "52w_low": None,
-        "beta": None,
-        "price": None,
-        "change": None,
-        "percent_change": None,
-        "volume": None,
-        "name": "",
-        "exchange": "",
-        "currency": "USD",
+    """Extract comprehensive metrics from yfinance ticker.info."""
+    r = {
+        # Basic
+        "price": None, "change": None, "percent_change": None,
+        "volume": None, "name": "", "exchange": "", "currency": "USD",
+        "market_cap": None, "52w_high": None, "52w_low": None, "beta": None,
+        # Fundamentals
+        "pe_ratio": None, "forward_pe": None, "peg_ratio": None,
+        "eps_growth": None, "dividend_yield": None, "revenue_growth": None,
+        "profit_margin": None, "debt_equity": None, "roe": None,
+        # Sector & Industry
+        "sector": None, "industry": None,
+        # Analyst
+        "analyst_target": None, "analyst_rating": None, "analyst_rating_label": None,
+        "target_upside": None,
     }
 
-    # Basic quote data
-    result["price"] = safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+    # Quote data
+    r["price"] = safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
     prev_close = safe_float(info.get("previousClose") or info.get("regularMarketPreviousClose"))
-    if result["price"] and prev_close:
-        result["change"] = round(result["price"] - prev_close, 4)
+    if r["price"] and prev_close:
+        r["change"] = round(r["price"] - prev_close, 4)
         if prev_close > 0:
-            result["percent_change"] = round((result["change"] / prev_close) * 100, 4)
+            r["percent_change"] = round((r["change"] / prev_close) * 100, 4)
+    r["volume"] = safe_float(info.get("volume") or info.get("regularMarketVolume"))
+    r["name"] = info.get("shortName") or info.get("longName") or ""
+    r["exchange"] = info.get("exchange", "")
+    r["currency"] = info.get("currency", "USD")
 
-    result["volume"] = safe_float(info.get("volume") or info.get("regularMarketVolume"))
-    result["name"] = info.get("shortName") or info.get("longName") or ""
-    result["exchange"] = info.get("exchange", "")
-    result["currency"] = info.get("currency", "USD")
+    # Market data
+    r["pe_ratio"] = safe_float(info.get("trailingPE"))
+    r["forward_pe"] = safe_float(info.get("forwardPE"))
+    r["peg_ratio"] = safe_float(info.get("pegRatio"))
+    r["market_cap"] = safe_float(info.get("marketCap"))
+    r["52w_high"] = safe_float(info.get("fiftyTwoWeekHigh"))
+    r["52w_low"] = safe_float(info.get("fiftyTwoWeekLow"))
+    r["beta"] = safe_float(info.get("beta"))
 
-    # Fundamentals
-    result["pe_ratio"] = safe_float(info.get("trailingPE"))
-    result["market_cap"] = safe_float(info.get("marketCap"))
-    result["52w_high"] = safe_float(info.get("fiftyTwoWeekHigh"))
-    result["52w_low"] = safe_float(info.get("fiftyTwoWeekLow"))
-    result["beta"] = safe_float(info.get("beta"))
+    # Sector & Industry
+    r["sector"] = info.get("sector") or None
+    r["industry"] = info.get("industry") or None
 
-    # Dividend yield (yfinance returns as decimal, e.g., 0.005 = 0.5%)
+    # Dividend yield (decimal → %)
     div_yield = safe_float(info.get("dividendYield"))
     if div_yield is not None:
-        result["dividend_yield"] = round(div_yield * 100, 2)
+        r["dividend_yield"] = round(div_yield * 100, 2)
 
-    # Profit margin (yfinance returns as decimal, e.g., 0.27 = 27%)
+    # Profit margin (decimal → %)
     pm = safe_float(info.get("profitMargins"))
     if pm is not None:
-        result["profit_margin"] = round(pm * 100, 2)
+        r["profit_margin"] = round(pm * 100, 2)
 
-    # Debt to equity (yfinance returns as percentage, e.g., 150 = 1.5 ratio)
+    # Debt to equity (yfinance gives percentage, e.g. 150 → 1.5 ratio)
     de = safe_float(info.get("debtToEquity"))
     if de is not None:
-        result["debt_equity"] = round(de / 100, 2)
+        r["debt_equity"] = round(de / 100, 2)
 
-    # EPS growth - use earningsGrowth (quarterly YoY) or earningsQuarterlyGrowth
+    # ROE (decimal → %)
+    roe = safe_float(info.get("returnOnEquity"))
+    if roe is not None:
+        r["roe"] = round(roe * 100, 2)
+
+    # EPS growth
     eps_g = safe_float(info.get("earningsGrowth"))
     if eps_g is not None:
-        result["eps_growth"] = round(eps_g * 100, 2)
+        r["eps_growth"] = round(eps_g * 100, 2)
     else:
         eps_g = safe_float(info.get("earningsQuarterlyGrowth"))
         if eps_g is not None:
-            result["eps_growth"] = round(eps_g * 100, 2)
+            r["eps_growth"] = round(eps_g * 100, 2)
 
-    # Revenue growth (yfinance returns as decimal)
+    # Revenue growth (decimal → %)
     rev_g = safe_float(info.get("revenueGrowth"))
     if rev_g is not None:
-        result["revenue_growth"] = round(rev_g * 100, 2)
+        r["revenue_growth"] = round(rev_g * 100, 2)
 
-    return result
+    # Analyst data
+    r["analyst_target"] = safe_float(info.get("targetMeanPrice"))
+    r["analyst_rating"] = safe_float(info.get("recommendationMean"))
+    r["analyst_rating_label"] = info.get("recommendationKey") or None
+
+    # Compute target upside %
+    if r["analyst_target"] and r["price"] and r["price"] > 0:
+        r["target_upside"] = round(((r["analyst_target"] - r["price"]) / r["price"]) * 100, 2)
+
+    return r
 
 
-def compute_signal(stock):
+# ---------------------------------------------------------------------------
+# Sector statistics
+# ---------------------------------------------------------------------------
+
+def compute_sector_stats(all_stock_data):
     """
-    Compute buy/sell signal based on fundamental metrics.
-
-    Scoring (0-100 scale):
-    - P/E Ratio:       0-25 pts (lower is better, relative to sector)
-    - EPS Growth:       0-25 pts (higher is better)
-    - Dividend Yield:   0-15 pts (higher is better, up to a point)
-    - Revenue Growth:   0-15 pts (higher is better)
-    - Profit Margin:    0-10 pts (higher is better)
-    - Debt/Equity:      0-10 pts (lower is better)
-
-    Signal thresholds:
-    - 70+: STRONG BUY
-    - 55-69: BUY
-    - 40-54: HOLD
-    - 25-39: SELL
-    - 0-24: STRONG SELL
+    Calculate median P/E, median profit margin, and median ROE per sector.
+    all_stock_data is a list of metric dicts (output of extract_from_yfinance).
+    Returns {sector_name: {median_pe, median_margin, median_roe, count}}.
     """
-    score = 0
+    sector_vals = {}
+    for d in all_stock_data:
+        sec = d.get("sector")
+        if not sec:
+            continue
+        if sec not in sector_vals:
+            sector_vals[sec] = {"pe": [], "margin": [], "roe": []}
+        if d.get("pe_ratio") is not None and d["pe_ratio"] > 0:
+            sector_vals[sec]["pe"].append(d["pe_ratio"])
+        if d.get("profit_margin") is not None:
+            sector_vals[sec]["margin"].append(d["profit_margin"])
+        if d.get("roe") is not None:
+            sector_vals[sec]["roe"].append(d["roe"])
+
+    stats = {}
+    for sec, vals in sector_vals.items():
+        stats[sec] = {
+            "median_pe": median(vals["pe"]) if vals["pe"] else None,
+            "median_margin": median(vals["margin"]) if vals["margin"] else None,
+            "median_roe": median(vals["roe"]) if vals["roe"] else None,
+            "count": len(vals["pe"]),
+        }
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Scoring engine
+# ---------------------------------------------------------------------------
+
+def compute_signal(stock, sector_stats=None):
+    """
+    Comprehensive scoring (0-100) with four pillars:
+
+    VALUE (25 pts)
+      Sector-relative P/E  (15 pts)
+      PEG Ratio             (10 pts)
+
+    GROWTH (30 pts)
+      EPS Growth            (15 pts)
+      Revenue Growth        (15 pts)
+
+    QUALITY (25 pts)
+      Profit Margin         (10 pts)
+      Return on Equity      (10 pts)
+      Debt / Equity          (5 pts)
+
+    OUTLOOK (20 pts)
+      Dividend Yield         (5 pts)
+      Analyst Rating        (10 pts)
+      Target Price Upside    (5 pts)
+    """
+
+    value_score = 0
+    growth_score = 0
+    quality_score = 0
+    outlook_score = 0
     details = {}
     has_any_data = False
 
     pe = stock.get("pe_ratio")
+    forward_pe = stock.get("forward_pe")
+    peg = stock.get("peg_ratio")
     eps_growth = stock.get("eps_growth")
-    div_yield = stock.get("dividend_yield")
     rev_growth = stock.get("revenue_growth")
     profit_margin = stock.get("profit_margin")
+    roe = stock.get("roe")
     debt_equity = stock.get("debt_equity")
+    div_yield = stock.get("dividend_yield")
+    analyst_rating = stock.get("analyst_rating")
+    target_upside = stock.get("target_upside")
+    sector = stock.get("sector")
 
-    # P/E Ratio scoring (0-25)
+    # ---- VALUE PILLAR (25 pts) ----
+
+    # Sector-relative P/E (15 pts)
     if pe is not None:
         has_any_data = True
-        if pe < 0:
-            pe_score = 0
-        elif pe < 10:
-            pe_score = 25
-        elif pe < 15:
-            pe_score = 22
-        elif pe < 20:
-            pe_score = 18
-        elif pe < 25:
-            pe_score = 14
-        elif pe < 35:
-            pe_score = 8
-        elif pe < 50:
-            pe_score = 4
-        else:
-            pe_score = 0
-        score += pe_score
-        details["pe_score"] = pe_score
+        sector_median_pe = None
+        if sector and sector_stats and sector in sector_stats:
+            sector_median_pe = sector_stats[sector].get("median_pe")
 
-    # EPS Growth scoring (0-25)
+        if sector_median_pe and sector_median_pe > 0:
+            # Score relative to sector median
+            ratio = pe / sector_median_pe
+            if pe < 0:
+                pe_score = 0
+            elif ratio < 0.5:
+                pe_score = 15
+            elif ratio < 0.7:
+                pe_score = 13
+            elif ratio < 0.85:
+                pe_score = 11
+            elif ratio < 1.0:
+                pe_score = 9
+            elif ratio < 1.15:
+                pe_score = 7
+            elif ratio < 1.5:
+                pe_score = 4
+            elif ratio < 2.0:
+                pe_score = 2
+            else:
+                pe_score = 0
+        else:
+            # Absolute scoring fallback
+            if pe < 0:
+                pe_score = 0
+            elif pe < 10:
+                pe_score = 15
+            elif pe < 15:
+                pe_score = 13
+            elif pe < 20:
+                pe_score = 10
+            elif pe < 25:
+                pe_score = 7
+            elif pe < 35:
+                pe_score = 4
+            else:
+                pe_score = 0
+        value_score += pe_score
+        details["pe_score"] = pe_score
+        details["sector_median_pe"] = sector_median_pe
+
+    # PEG Ratio (10 pts) — lower = growth at a reasonable price
+    if peg is not None:
+        has_any_data = True
+        if peg < 0:
+            peg_score = 0  # negative PEG means negative earnings/growth
+        elif peg < 0.5:
+            peg_score = 10
+        elif peg < 1.0:
+            peg_score = 9
+        elif peg < 1.5:
+            peg_score = 7
+        elif peg < 2.0:
+            peg_score = 5
+        elif peg < 3.0:
+            peg_score = 3
+        else:
+            peg_score = 0
+        value_score += peg_score
+        details["peg_score"] = peg_score
+
+    # ---- GROWTH PILLAR (30 pts) ----
+
+    # EPS Growth (15 pts)
     if eps_growth is not None:
         has_any_data = True
         if eps_growth > 30:
-            eg_score = 25
+            eg_score = 15
         elif eps_growth > 20:
-            eg_score = 22
+            eg_score = 13
         elif eps_growth > 15:
-            eg_score = 18
+            eg_score = 11
         elif eps_growth > 10:
-            eg_score = 14
+            eg_score = 9
         elif eps_growth > 5:
-            eg_score = 10
+            eg_score = 6
         elif eps_growth > 0:
-            eg_score = 5
+            eg_score = 3
         else:
             eg_score = 0
-        score += eg_score
+        growth_score += eg_score
         details["eps_growth_score"] = eg_score
 
-    # Dividend Yield scoring (0-15)
-    if div_yield is not None:
-        has_any_data = True
-        if div_yield > 6:
-            dy_score = 8
-        elif div_yield > 4:
-            dy_score = 15
-        elif div_yield > 3:
-            dy_score = 13
-        elif div_yield > 2:
-            dy_score = 10
-        elif div_yield > 1:
-            dy_score = 7
-        elif div_yield > 0:
-            dy_score = 3
-        else:
-            dy_score = 0
-        score += dy_score
-        details["dividend_score"] = dy_score
-
-    # Revenue Growth scoring (0-15)
+    # Revenue Growth (15 pts)
     if rev_growth is not None:
         has_any_data = True
         if rev_growth > 25:
@@ -331,10 +428,12 @@ def compute_signal(stock):
             rg_score = 3
         else:
             rg_score = 0
-        score += rg_score
+        growth_score += rg_score
         details["revenue_growth_score"] = rg_score
 
-    # Profit Margin scoring (0-10)
+    # ---- QUALITY PILLAR (25 pts) ----
+
+    # Profit Margin (10 pts)
     if profit_margin is not None:
         has_any_data = True
         if profit_margin > 25:
@@ -349,161 +448,258 @@ def compute_signal(stock):
             pm_score = 2
         else:
             pm_score = 0
-        score += pm_score
+        quality_score += pm_score
         details["profit_margin_score"] = pm_score
 
-    # Debt/Equity scoring (0-10)
+    # Return on Equity (10 pts)
+    if roe is not None:
+        has_any_data = True
+        if roe > 30:
+            roe_score = 10
+        elif roe > 20:
+            roe_score = 8
+        elif roe > 15:
+            roe_score = 7
+        elif roe > 10:
+            roe_score = 5
+        elif roe > 5:
+            roe_score = 3
+        elif roe > 0:
+            roe_score = 1
+        else:
+            roe_score = 0
+        quality_score += roe_score
+        details["roe_score"] = roe_score
+
+    # Debt/Equity (5 pts)
     if debt_equity is not None:
         has_any_data = True
         if debt_equity < 0.3:
-            de_score = 10
+            de_score = 5
         elif debt_equity < 0.5:
-            de_score = 8
-        elif debt_equity < 1.0:
-            de_score = 6
-        elif debt_equity < 1.5:
             de_score = 4
-        elif debt_equity < 2.0:
+        elif debt_equity < 1.0:
+            de_score = 3
+        elif debt_equity < 1.5:
             de_score = 2
+        elif debt_equity < 2.0:
+            de_score = 1
         else:
             de_score = 0
-        score += de_score
+        quality_score += de_score
         details["debt_equity_score"] = de_score
 
-    # If we have no fundamental data at all, mark as N/A instead of STRONG SELL
-    if not has_any_data:
-        return 0, "NO DATA", details
+    # ---- OUTLOOK PILLAR (20 pts) ----
 
-    # Determine signal
-    if score >= 70:
+    # Dividend Yield (5 pts)
+    if div_yield is not None:
+        has_any_data = True
+        if div_yield > 6:
+            dy_score = 2  # very high yield = risk flag
+        elif div_yield > 4:
+            dy_score = 5
+        elif div_yield > 3:
+            dy_score = 4
+        elif div_yield > 2:
+            dy_score = 3
+        elif div_yield > 1:
+            dy_score = 2
+        elif div_yield > 0:
+            dy_score = 1
+        else:
+            dy_score = 0
+        outlook_score += dy_score
+        details["dividend_score"] = dy_score
+
+    # Analyst Rating (10 pts) — 1=Strong Buy ... 5=Sell
+    if analyst_rating is not None:
+        has_any_data = True
+        if analyst_rating <= 1.5:
+            ar_score = 10
+        elif analyst_rating <= 2.0:
+            ar_score = 8
+        elif analyst_rating <= 2.5:
+            ar_score = 6
+        elif analyst_rating <= 3.0:
+            ar_score = 4
+        elif analyst_rating <= 3.5:
+            ar_score = 2
+        else:
+            ar_score = 0
+        outlook_score += ar_score
+        details["analyst_score"] = ar_score
+
+    # Target Price Upside (5 pts)
+    if target_upside is not None:
+        has_any_data = True
+        if target_upside > 30:
+            tu_score = 5
+        elif target_upside > 20:
+            tu_score = 4
+        elif target_upside > 10:
+            tu_score = 3
+        elif target_upside > 0:
+            tu_score = 2
+        elif target_upside > -10:
+            tu_score = 1
+        else:
+            tu_score = 0
+        outlook_score += tu_score
+        details["target_upside_score"] = tu_score
+
+    if not has_any_data:
+        return 0, "NO DATA", details, {"value": 0, "growth": 0, "quality": 0, "outlook": 0}
+
+    total = value_score + growth_score + quality_score + outlook_score
+    pillar_scores = {
+        "value": value_score,
+        "growth": growth_score,
+        "quality": quality_score,
+        "outlook": outlook_score,
+    }
+
+    if total >= 70:
         signal = "STRONG BUY"
-    elif score >= 55:
+    elif total >= 55:
         signal = "BUY"
-    elif score >= 40:
+    elif total >= 40:
         signal = "HOLD"
-    elif score >= 25:
+    elif total >= 25:
         signal = "SELL"
     else:
         signal = "STRONG SELL"
 
-    return score, signal, details
+    return total, signal, details, pillar_scores
 
+
+# ---------------------------------------------------------------------------
+# Market processing
+# ---------------------------------------------------------------------------
 
 def process_market(market_name, symbols):
-    """Process all stocks in a market using yfinance."""
+    """Fetch data and build stock entries (scoring is done later with sector context)."""
     print(f"\n{'='*60}")
     print(f"Processing {market_name} ({len(symbols)} stocks)")
     print(f"{'='*60}")
 
-    stocks = []
-
-    # Fetch all data via yfinance (quotes + fundamentals in one go)
     print(f"\nFetching data for {market_name} via yfinance...")
     stock_data = fetch_yfinance_data(symbols)
     print(f"  Got data for {len(stock_data)} / {len(symbols)} stocks")
 
-    # Process each stock
+    entries = []
     for symbol in symbols:
         metrics = stock_data.get(symbol)
-        if not metrics:
+        if not metrics or not metrics.get("price"):
             continue
-
-        # Need at least a price to include the stock
-        if not metrics.get("price"):
-            continue
-
-        # Compute signal
-        score, signal, score_details = compute_signal(metrics)
-
-        stock_entry = {
+        entries.append({
             "symbol": to_display_symbol(symbol),
             "raw_symbol": symbol,
-            "name": metrics.get("name", symbol),
             "market": market_name,
-            "exchange": metrics.get("exchange", ""),
-            "currency": metrics.get("currency", "USD"),
-            "price": metrics.get("price"),
-            "change": metrics.get("change"),
-            "percent_change": metrics.get("percent_change"),
-            "volume": metrics.get("volume"),
-            "market_cap": metrics.get("market_cap"),
-            "pe_ratio": metrics.get("pe_ratio"),
-            "eps_growth": metrics.get("eps_growth"),
-            "dividend_yield": metrics.get("dividend_yield"),
-            "revenue_growth": metrics.get("revenue_growth"),
-            "profit_margin": metrics.get("profit_margin"),
-            "debt_equity": metrics.get("debt_equity"),
-            "52w_high": metrics.get("52w_high"),
-            "52w_low": metrics.get("52w_low"),
-            "beta": metrics.get("beta"),
-            "score": score,
-            "signal": signal,
-            "score_details": score_details,
-        }
-        stocks.append(stock_entry)
+            **metrics,
+        })
 
-    # Sort by score descending
-    stocks.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return entries
 
-    print(f"\n  Processed {len(stocks)} stocks for {market_name}")
-    signal_counts = {}
-    for s in stocks:
+
+def score_all_stocks(all_entries):
+    """Score all stocks using sector-relative context."""
+    # First pass: compute sector stats across ALL markets
+    sector_stats = compute_sector_stats(all_entries)
+    print(f"\nSector statistics computed for {len(sector_stats)} sectors:")
+    for sec, stats in sorted(sector_stats.items(), key=lambda x: -x[1]["count"]):
+        pe_str = f"median P/E={stats['median_pe']:.1f}" if stats["median_pe"] else "no P/E"
+        print(f"  {sec}: {stats['count']} stocks, {pe_str}")
+
+    # Second pass: score each stock with sector context
+    for entry in all_entries:
+        score, signal, details, pillar_scores = compute_signal(entry, sector_stats)
+        entry["score"] = score
+        entry["signal"] = signal
+        entry["score_details"] = details
+        entry["value_score"] = pillar_scores["value"]
+        entry["growth_score"] = pillar_scores["growth"]
+        entry["quality_score"] = pillar_scores["quality"]
+        entry["outlook_score"] = pillar_scores["outlook"]
+
+    return sector_stats
+
+
+def build_sector_breakdown(all_stocks, sector_stats):
+    """Build sector-level summary for the dashboard."""
+    sectors = {}
+    for s in all_stocks:
+        sec = s.get("sector") or "Unknown"
+        if sec not in sectors:
+            sectors[sec] = {
+                "name": sec,
+                "stocks": [],
+                "count": 0,
+                "avg_score": 0,
+                "signals": {},
+                "median_pe": None,
+                "median_margin": None,
+                "median_roe": None,
+            }
+        sectors[sec]["stocks"].append({
+            "symbol": s["symbol"],
+            "market": s["market"],
+            "score": s["score"],
+            "signal": s["signal"],
+        })
+        sectors[sec]["count"] += 1
         sig = s["signal"]
-        signal_counts[sig] = signal_counts.get(sig, 0) + 1
-    for sig, count in sorted(signal_counts.items()):
-        print(f"    {sig}: {count}")
+        sectors[sec]["signals"][sig] = sectors[sec]["signals"].get(sig, 0) + 1
 
-    return stocks
+    for sec_name, sec_data in sectors.items():
+        scores = [st["score"] for st in sec_data["stocks"]]
+        sec_data["avg_score"] = round(sum(scores) / len(scores), 1) if scores else 0
+        # Sort stocks by score desc and keep top 5
+        sec_data["stocks"].sort(key=lambda x: x["score"], reverse=True)
+        sec_data["top_stocks"] = sec_data["stocks"][:5]
+        del sec_data["stocks"]  # don't duplicate full list
+        # Pull in sector stats
+        if sec_name in sector_stats:
+            sec_data["median_pe"] = round(sector_stats[sec_name]["median_pe"], 1) if sector_stats[sec_name]["median_pe"] else None
+            sec_data["median_margin"] = round(sector_stats[sec_name]["median_margin"], 1) if sector_stats[sec_name]["median_margin"] else None
+            sec_data["median_roe"] = round(sector_stats[sec_name]["median_roe"], 1) if sector_stats[sec_name]["median_roe"] else None
 
+    return sectors
+
+
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
 
 def send_email_alert(all_stocks):
-    """Send email with top buy/sell signals."""
     email_user = os.environ.get("EMAIL_USER", "")
     email_pass = os.environ.get("EMAIL_PASS", "")
     email_to = os.environ.get("EMAIL_TO", "")
-
     if not all([email_user, email_pass, email_to]):
         print("\nEmail credentials not set, skipping alert.")
         return
 
-    # Filter for actionable signals
     strong_buys = [s for s in all_stocks if s["signal"] == "STRONG BUY"]
-    buys = [s for s in all_stocks if s["signal"] == "BUY"]
     strong_sells = [s for s in all_stocks if s["signal"] == "STRONG SELL"]
-    sells = [s for s in all_stocks if s["signal"] == "SELL"]
+    buys = [s for s in all_stocks if s["signal"] == "BUY"]
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-    body = f"Market Dashboard Scan — {now}\n"
-    body += "=" * 50 + "\n\n"
+    body = f"Market Dashboard Scan — {now}\n{'='*50}\n\n"
 
     if strong_buys:
-        body += f"STRONG BUY ({len(strong_buys)} stocks):\n"
-        body += "-" * 40 + "\n"
+        body += f"STRONG BUY ({len(strong_buys)} stocks):\n{'-'*40}\n"
         for s in strong_buys[:10]:
-            body += f"  {s['symbol']:12s} | {s['market']:8s} | Score: {s['score']:3d} | Price: {s.get('currency','')}{s.get('price','N/A')}\n"
-            body += f"               P/E: {s.get('pe_ratio','N/A')} | EPS Growth: {s.get('eps_growth','N/A')}% | Div: {s.get('dividend_yield','N/A')}%\n"
+            body += f"  {s['symbol']:12s} | {s['market']:8s} | Score: {s['score']:3d} | {s.get('sector','N/A')}\n"
+            body += f"    P/E: {s.get('pe_ratio','N/A')} | PEG: {s.get('peg_ratio','N/A')} | ROE: {s.get('roe','N/A')}% | Analyst: {s.get('analyst_rating_label','N/A')}\n"
         body += "\n"
-
     if buys:
-        body += f"BUY ({len(buys)} stocks):\n"
-        body += "-" * 40 + "\n"
+        body += f"BUY ({len(buys)} stocks):\n{'-'*40}\n"
         for s in buys[:10]:
-            body += f"  {s['symbol']:12s} | {s['market']:8s} | Score: {s['score']:3d} | Price: {s.get('currency','')}{s.get('price','N/A')}\n"
+            body += f"  {s['symbol']:12s} | {s['market']:8s} | Score: {s['score']:3d}\n"
         body += "\n"
-
     if strong_sells:
-        body += f"STRONG SELL ({len(strong_sells)} stocks):\n"
-        body += "-" * 40 + "\n"
+        body += f"STRONG SELL ({len(strong_sells)} stocks):\n{'-'*40}\n"
         for s in strong_sells[:10]:
-            body += f"  {s['symbol']:12s} | {s['market']:8s} | Score: {s['score']:3d} | Price: {s.get('currency','')}{s.get('price','N/A')}\n"
-        body += "\n"
-
-    if sells:
-        body += f"SELL ({len(sells)} stocks):\n"
-        body += "-" * 40 + "\n"
-        for s in sells[:10]:
-            body += f"  {s['symbol']:12s} | {s['market']:8s} | Score: {s['score']:3d} | Price: {s.get('currency','')}{s.get('price','N/A')}\n"
+            body += f"  {s['symbol']:12s} | {s['market']:8s} | Score: {s['score']:3d}\n"
         body += "\n"
 
     body += f"\nTotal stocks scanned: {len(all_stocks)}\n"
@@ -511,9 +707,8 @@ def send_email_alert(all_stocks):
 
     import smtplib
     from email.mime.text import MIMEText
-
     msg = MIMEText(body)
-    msg["Subject"] = f"Market Dashboard Alert — {len(strong_buys)} Strong Buys, {len(strong_sells)} Strong Sells"
+    msg["Subject"] = f"Market Dashboard — {len(strong_buys)} Strong Buys | {now}"
     msg["From"] = email_user
     msg["To"] = email_to
 
@@ -526,11 +721,15 @@ def send_email_alert(all_stocks):
         print(f"\nEmail error: {e}")
 
 
-def main():
-    print(f"Market Dashboard Scanner — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"Data source: yfinance (Yahoo Finance)")
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
-    # Check yfinance is available
+def main():
+    print(f"Market Dashboard Scanner v2 — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"Enhanced: Sector Analysis + Growth Potential + Sector-Relative Scoring")
+    print(f"Data source: yfinance (Yahoo Finance)\n")
+
     try:
         import yfinance
         print(f"yfinance version: {yfinance.__version__}")
@@ -538,52 +737,72 @@ def main():
         print("ERROR: yfinance not installed! Run: pip install yfinance")
         sys.exit(1)
 
-    all_stocks = []
+    all_entries = []
 
-    # yfinance has no rate limits like Twelve Data, so we can process all stocks
-    # Each stock takes ~1-2s, so 250 stocks ≈ 5-8 minutes total
+    # Fetch data for each market (scoring happens later with sector context)
+    nasdaq_entries = process_market("NASDAQ", NASDAQ_TOP_100[:50])
+    all_entries.extend(nasdaq_entries)
 
-    # NASDAQ — top 50
-    nasdaq_stocks = process_market("NASDAQ", NASDAQ_TOP_100[:50])
-    all_stocks.extend(nasdaq_stocks)
+    bse_entries = process_market("BSE", BSE_TOP_100[:50])
+    all_entries.extend(bse_entries)
 
-    # BSE India — top 50
-    bse_stocks = process_market("BSE", BSE_TOP_100[:50])
-    all_stocks.extend(bse_stocks)
+    uae_entries = process_market("UAE", UAE_TOP_STOCKS)
+    all_entries.extend(uae_entries)
 
-    # UAE — all 50
-    uae_stocks = process_market("UAE", UAE_TOP_STOCKS)
-    all_stocks.extend(uae_stocks)
+    # Score all stocks using sector-relative context
+    sector_stats = score_all_stocks(all_entries)
+
+    # Sort by score
+    all_entries.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+    # Print summary per market
+    for mkt in ["NASDAQ", "BSE", "UAE"]:
+        mkt_stocks = [s for s in all_entries if s["market"] == mkt]
+        if not mkt_stocks:
+            continue
+        print(f"\n  {mkt}: {len(mkt_stocks)} stocks")
+        signal_counts = {}
+        for s in mkt_stocks:
+            signal_counts[s["signal"]] = signal_counts.get(s["signal"], 0) + 1
+        for sig, cnt in sorted(signal_counts.items()):
+            print(f"    {sig}: {cnt}")
+
+    # Build sector breakdown
+    sector_breakdown = build_sector_breakdown(all_entries, sector_stats)
 
     # Save results
     scan_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    # Clean up entries for JSON (remove raw_symbol)
+    for entry in all_entries:
+        entry.pop("raw_symbol", None)
+
     output = {
         "scan_time": scan_time,
-        "total_stocks": len(all_stocks),
+        "total_stocks": len(all_entries),
+        "version": 2,
         "markets": {
-            "NASDAQ": [s for s in all_stocks if s["market"] == "NASDAQ"],
-            "BSE": [s for s in all_stocks if s["market"] == "BSE"],
-            "UAE": [s for s in all_stocks if s["market"] == "UAE"],
+            "NASDAQ": [s for s in all_entries if s["market"] == "NASDAQ"],
+            "BSE": [s for s in all_entries if s["market"] == "BSE"],
+            "UAE": [s for s in all_entries if s["market"] == "UAE"],
         },
+        "sectors": sector_breakdown,
         "summary": {
-            "strong_buy": len([s for s in all_stocks if s["signal"] == "STRONG BUY"]),
-            "buy": len([s for s in all_stocks if s["signal"] == "BUY"]),
-            "hold": len([s for s in all_stocks if s["signal"] == "HOLD"]),
-            "sell": len([s for s in all_stocks if s["signal"] == "SELL"]),
-            "strong_sell": len([s for s in all_stocks if s["signal"] == "STRONG SELL"]),
-            "no_data": len([s for s in all_stocks if s["signal"] == "NO DATA"]),
-        }
+            "strong_buy": len([s for s in all_entries if s["signal"] == "STRONG BUY"]),
+            "buy": len([s for s in all_entries if s["signal"] == "BUY"]),
+            "hold": len([s for s in all_entries if s["signal"] == "HOLD"]),
+            "sell": len([s for s in all_entries if s["signal"] == "SELL"]),
+            "strong_sell": len([s for s in all_entries if s["signal"] == "STRONG SELL"]),
+            "no_data": len([s for s in all_entries if s["signal"] == "NO DATA"]),
+        },
     }
 
-    # Save to data/
     os.makedirs("data", exist_ok=True)
-
     with open("data/dashboard.json", "w") as f:
         json.dump(output, f, indent=2, default=str)
-    print(f"\nSaved data/dashboard.json ({len(all_stocks)} stocks)")
+    print(f"\nSaved data/dashboard.json ({len(all_entries)} stocks)")
 
-    # Update history
+    # History
     history_file = "data/history.json"
     history = []
     if os.path.exists(history_file):
@@ -592,29 +811,23 @@ def main():
                 history = json.load(f)
         except:
             history = []
-
     history.append({
         "date": scan_time,
-        "total": len(all_stocks),
+        "total": len(all_entries),
         "strong_buy": output["summary"]["strong_buy"],
         "buy": output["summary"]["buy"],
         "hold": output["summary"]["hold"],
         "sell": output["summary"]["sell"],
         "strong_sell": output["summary"]["strong_sell"],
-        "top_buys": [{"symbol": s["symbol"], "market": s["market"], "score": s["score"]}
-                     for s in sorted(all_stocks, key=lambda x: x["score"], reverse=True)[:5]],
+        "top_buys": [{"symbol": s["symbol"], "market": s["market"], "score": s["score"], "sector": s.get("sector")}
+                     for s in sorted(all_entries, key=lambda x: x["score"], reverse=True)[:5]],
     })
-
-    # Keep 90 days of history
     history = history[-90:]
-
     with open(history_file, "w") as f:
         json.dump(history, f, indent=2, default=str)
     print(f"Updated history ({len(history)} entries)")
 
-    # Send email
-    send_email_alert(all_stocks)
-
+    send_email_alert(all_entries)
     print(f"\nDone!")
 
 
