@@ -262,34 +262,60 @@ def extract_fundamentals(stats_data, quote_data):
         result["52w_low"] = safe_float(quote_data.get("fifty_two_week", {}).get("low"))
 
     if stats_data:
-        val = stats_data.get("valuations_metrics", {})
+        # Twelve Data nests everything under "statistics" key
+        stats = stats_data.get("statistics", stats_data)
+
+        val = stats.get("valuations_metrics", {})
         if not val:
-            val = stats_data.get("valuation_metrics", {})
+            val = stats.get("valuation_metrics", {})
         result["pe_ratio"] = safe_float(val.get("trailing_pe"))
         result["market_cap"] = safe_float(val.get("market_capitalization"))
 
-        fin = stats_data.get("financials", {})
+        fin = stats.get("financials", {})
         if fin:
             bal = fin.get("balance_sheet", {})
             inc = fin.get("income_statement", {})
-            if inc:
-                rev = safe_float(inc.get("revenue"))
-                net_inc = safe_float(inc.get("net_income"))
+
+            # Profit margin - directly available on financials level
+            pm = safe_float(fin.get("profit_margin"))
+            if pm is not None:
+                result["profit_margin"] = round(pm * 100, 2)
+            elif inc:
+                rev = safe_float(inc.get("revenue_ttm"))
+                net_inc = safe_float(inc.get("net_income_to_common_ttm"))
                 if rev and net_inc and rev > 0:
                     result["profit_margin"] = round((net_inc / rev) * 100, 2)
-            if bal:
-                total_debt = safe_float(bal.get("total_debt"))
-                equity = safe_float(bal.get("shareholders_equity"))
-                if total_debt is not None and equity and equity > 0:
-                    result["debt_equity"] = round(total_debt / equity, 2)
 
-        divs = stats_data.get("dividends_and_splits", {})
+            # Debt to equity - use pre-computed ratio if available
+            if bal:
+                de_pct = safe_float(bal.get("total_debt_to_equity_mrq"))
+                if de_pct is not None:
+                    result["debt_equity"] = round(de_pct / 100, 2)
+                else:
+                    total_debt = safe_float(bal.get("total_debt_mrq") or bal.get("total_debt"))
+                    equity = safe_float(bal.get("shareholders_equity"))
+                    if total_debt is not None and equity and equity > 0:
+                        result["debt_equity"] = round(total_debt / equity, 2)
+
+            # EPS growth from quarterly YoY earnings growth
+            if inc:
+                eps_g = safe_float(inc.get("quarterly_earnings_growth_yoy"))
+                if eps_g is not None:
+                    result["eps_growth"] = round(eps_g * 100, 2)
+
+            # Revenue growth from quarterly revenue growth
+            if inc:
+                rev_g = safe_float(inc.get("quarterly_revenue_growth"))
+                if rev_g is not None:
+                    result["revenue_growth"] = round(rev_g * 100, 2)
+
+        divs = stats.get("dividends_and_splits", {})
         if divs:
             result["dividend_yield"] = safe_float(divs.get("forward_annual_dividend_yield"))
             if result["dividend_yield"]:
                 result["dividend_yield"] = round(result["dividend_yield"] * 100, 2)
 
-        sp = stats_data.get("stock_price_summary", {})
+        sp = stats.get("stock_price_summary", {})
         if sp:
             result["beta"] = safe_float(sp.get("beta"))
             if not result["52w_high"]:
@@ -297,19 +323,23 @@ def extract_fundamentals(stats_data, quote_data):
             if not result["52w_low"]:
                 result["52w_low"] = safe_float(sp.get("fifty_two_week_low"))
 
-        earn = stats_data.get("earnings", {})
-        if earn:
-            eps_curr = safe_float(earn.get("earnings_per_share"))
-            eps_prev = safe_float(earn.get("earnings_per_share_previous"))
-            if eps_curr is not None and eps_prev is not None and eps_prev != 0:
-                result["eps_growth"] = round(((eps_curr - eps_prev) / abs(eps_prev)) * 100, 2)
+        # EPS growth fallback
+        if result["eps_growth"] is None:
+            earn = stats.get("earnings", {})
+            if earn:
+                eps_curr = safe_float(earn.get("earnings_per_share"))
+                eps_prev = safe_float(earn.get("earnings_per_share_previous"))
+                if eps_curr is not None and eps_prev is not None and eps_prev != 0:
+                    result["eps_growth"] = round(((eps_curr - eps_prev) / abs(eps_prev)) * 100, 2)
 
-        rev_data = stats_data.get("revenue", {})
-        if rev_data:
-            rev_curr = safe_float(rev_data.get("revenue_ttm"))
-            rev_prev = safe_float(rev_data.get("revenue_previous_year"))
-            if rev_curr is not None and rev_prev is not None and rev_prev > 0:
-                result["revenue_growth"] = round(((rev_curr - rev_prev) / rev_prev) * 100, 2)
+        # Revenue growth fallback
+        if result["revenue_growth"] is None:
+            rev_data = stats.get("revenue", {})
+            if rev_data:
+                rev_curr = safe_float(rev_data.get("revenue_ttm"))
+                rev_prev = safe_float(rev_data.get("revenue_previous_year"))
+                if rev_curr is not None and rev_prev is not None and rev_prev > 0:
+                    result["revenue_growth"] = round(((rev_curr - rev_prev) / rev_prev) * 100, 2)
 
     return result
 
