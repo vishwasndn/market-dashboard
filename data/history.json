@@ -229,5 +229,46 @@
         "sector": "Industrials"
       }
     ]
+  },
+  {
+    "date": "2026-04-21T21:51:06Z",
+    "total": 99,
+    "strong_buy": 10,
+    "buy": 28,
+    "hold": 32,
+    "sell": 22,
+    "strong_sell": 7,
+    "top_buys": [
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 93,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 85,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "ADANIPORTS",
+        "market": "BSE",
+        "score": 78,
+        "sector": "Industrials"
+      },
+      {
+        "symbol": "GOOGL",
+        "market": "NASDAQ",
+        "score": 77,
+        "sector": "Communication Services"
+      },
+      {
+        "symbol": "META",
+        "market": "NASDAQ",
+        "score": 77,
+        "sector": "Communication Services"
+      }
+    ]
   }
 ]
