@@ -434,5 +434,46 @@
         "sector": "Industrials"
       }
     ]
+  },
+  {
+    "date": "2026-04-28T22:02:56Z",
+    "total": 99,
+    "strong_buy": 14,
+    "buy": 36,
+    "hold": 33,
+    "sell": 13,
+    "strong_sell": 3,
+    "top_buys": [
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 92,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "MSFT",
+        "market": "NASDAQ",
+        "score": 86,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 84,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "INTU",
+        "market": "NASDAQ",
+        "score": 82,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "ADANIPORTS",
+        "market": "BSE",
+        "score": 78,
+        "sector": "Industrials"
+      }
+    ]
   }
 ]
