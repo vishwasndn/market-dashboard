@@ -1213,5 +1213,46 @@
         "sector": "Technology"
       }
     ]
+  },
+  {
+    "date": "2026-05-25T22:11:30Z",
+    "total": 99,
+    "strong_buy": 20,
+    "buy": 34,
+    "hold": 28,
+    "sell": 14,
+    "strong_sell": 3,
+    "top_buys": [
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 92,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "META",
+        "market": "NASDAQ",
+        "score": 89,
+        "sector": "Communication Services"
+      },
+      {
+        "symbol": "MSFT",
+        "market": "NASDAQ",
+        "score": 86,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 86,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "INTU",
+        "market": "NASDAQ",
+        "score": 78,
+        "sector": "Technology"
+      }
+    ]
   }
 ]
