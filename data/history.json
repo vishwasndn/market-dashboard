@@ -1992,5 +1992,46 @@
         "sector": "Technology"
       }
     ]
+  },
+  {
+    "date": "2026-06-19T22:07:48Z",
+    "total": 99,
+    "strong_buy": 16,
+    "buy": 39,
+    "hold": 26,
+    "sell": 14,
+    "strong_sell": 4,
+    "top_buys": [
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 90,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "META",
+        "market": "NASDAQ",
+        "score": 89,
+        "sector": "Communication Services"
+      },
+      {
+        "symbol": "MSFT",
+        "market": "NASDAQ",
+        "score": 86,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "AVGO",
+        "market": "NASDAQ",
+        "score": 80,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 79,
+        "sector": "Technology"
+      }
+    ]
   }
 ]
