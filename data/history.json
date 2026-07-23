@@ -2976,5 +2976,46 @@
         "sector": "Technology"
       }
     ]
+  },
+  {
+    "date": "2026-07-23T22:08:12Z",
+    "total": 99,
+    "strong_buy": 19,
+    "buy": 35,
+    "hold": 33,
+    "sell": 9,
+    "strong_sell": 3,
+    "top_buys": [
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 98,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 92,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "GOOGL",
+        "market": "NASDAQ",
+        "score": 87,
+        "sector": "Communication Services"
+      },
+      {
+        "symbol": "META",
+        "market": "NASDAQ",
+        "score": 87,
+        "sector": "Communication Services"
+      },
+      {
+        "symbol": "MSFT",
+        "market": "NASDAQ",
+        "score": 86,
+        "sector": "Technology"
+      }
+    ]
   }
 ]
