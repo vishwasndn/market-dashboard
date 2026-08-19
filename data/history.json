@@ -1,41 +1,5 @@
 [
   {
-    "date": "2026-04-16T20:29:35Z",
-    "total": 99,
-    "strong_buy": 9,
-    "buy": 29,
-    "hold": 30,
-    "sell": 25,
-    "strong_sell": 6,
-    "top_buys": [
-      {
-        "symbol": "MU",
-        "market": "NASDAQ",
-        "score": 82
-      },
-      {
-        "symbol": "HEROMOTOCO",
-        "market": "BSE",
-        "score": 76
-      },
-      {
-        "symbol": "PYPL",
-        "market": "NASDAQ",
-        "score": 75
-      },
-      {
-        "symbol": "BPCL",
-        "market": "BSE",
-        "score": 75
-      },
-      {
-        "symbol": "GOOGL",
-        "market": "NASDAQ",
-        "score": 73
-      }
-    ]
-  },
-  {
     "date": "2026-04-16T21:50:02Z",
     "total": 99,
     "strong_buy": 7,
@@ -3681,6 +3645,47 @@
         "market": "NASDAQ",
         "score": 83,
         "sector": "Consumer Cyclical"
+      }
+    ]
+  },
+  {
+    "date": "2026-08-19T21:29:02Z",
+    "total": 99,
+    "strong_buy": 16,
+    "buy": 35,
+    "hold": 33,
+    "sell": 14,
+    "strong_sell": 1,
+    "top_buys": [
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 93,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 90,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "GOOGL",
+        "market": "NASDAQ",
+        "score": 86,
+        "sector": "Communication Services"
+      },
+      {
+        "symbol": "MSFT",
+        "market": "NASDAQ",
+        "score": 85,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "AVGO",
+        "market": "NASDAQ",
+        "score": 84,
+        "sector": "Technology"
       }
     ]
   }
