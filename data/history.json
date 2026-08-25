@@ -1,46 +1,5 @@
 [
   {
-    "date": "2026-04-21T21:51:06Z",
-    "total": 99,
-    "strong_buy": 10,
-    "buy": 28,
-    "hold": 32,
-    "sell": 22,
-    "strong_sell": 7,
-    "top_buys": [
-      {
-        "symbol": "MU",
-        "market": "NASDAQ",
-        "score": 93,
-        "sector": "Technology"
-      },
-      {
-        "symbol": "NVDA",
-        "market": "NASDAQ",
-        "score": 85,
-        "sector": "Technology"
-      },
-      {
-        "symbol": "ADANIPORTS",
-        "market": "BSE",
-        "score": 78,
-        "sector": "Industrials"
-      },
-      {
-        "symbol": "GOOGL",
-        "market": "NASDAQ",
-        "score": 77,
-        "sector": "Communication Services"
-      },
-      {
-        "symbol": "META",
-        "market": "NASDAQ",
-        "score": 77,
-        "sector": "Communication Services"
-      }
-    ]
-  },
-  {
     "date": "2026-04-22T21:54:04Z",
     "total": 99,
     "strong_buy": 12,
@@ -3653,6 +3612,47 @@
     "total": 99,
     "strong_buy": 16,
     "buy": 38,
+    "hold": 30,
+    "sell": 14,
+    "strong_sell": 1,
+    "top_buys": [
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 98,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 90,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "GOOGL",
+        "market": "NASDAQ",
+        "score": 86,
+        "sector": "Communication Services"
+      },
+      {
+        "symbol": "MSFT",
+        "market": "NASDAQ",
+        "score": 83,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "AMZN",
+        "market": "NASDAQ",
+        "score": 83,
+        "sector": "Consumer Cyclical"
+      }
+    ]
+  },
+  {
+    "date": "2026-08-25T21:31:39Z",
+    "total": 99,
+    "strong_buy": 15,
+    "buy": 39,
     "hold": 30,
     "sell": 14,
     "strong_sell": 1,
