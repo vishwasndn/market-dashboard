@@ -1,46 +1,5 @@
 [
   {
-    "date": "2026-05-27T22:43:59Z",
-    "total": 99,
-    "strong_buy": 18,
-    "buy": 37,
-    "hold": 26,
-    "sell": 15,
-    "strong_sell": 3,
-    "top_buys": [
-      {
-        "symbol": "NVDA",
-        "market": "NASDAQ",
-        "score": 92,
-        "sector": "Technology"
-      },
-      {
-        "symbol": "META",
-        "market": "NASDAQ",
-        "score": 89,
-        "sector": "Communication Services"
-      },
-      {
-        "symbol": "MSFT",
-        "market": "NASDAQ",
-        "score": 86,
-        "sector": "Technology"
-      },
-      {
-        "symbol": "MU",
-        "market": "NASDAQ",
-        "score": 84,
-        "sector": "Technology"
-      },
-      {
-        "symbol": "INTU",
-        "market": "NASDAQ",
-        "score": 78,
-        "sector": "Technology"
-      }
-    ]
-  },
-  {
     "date": "2026-05-28T22:42:34Z",
     "total": 98,
     "strong_buy": 18,
@@ -3656,6 +3615,47 @@
     "hold": 27,
     "sell": 14,
     "strong_sell": 1,
+    "top_buys": [
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 98,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 93,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "GOOGL",
+        "market": "NASDAQ",
+        "score": 84,
+        "sector": "Communication Services"
+      },
+      {
+        "symbol": "AMZN",
+        "market": "NASDAQ",
+        "score": 84,
+        "sector": "Consumer Cyclical"
+      },
+      {
+        "symbol": "AVGO",
+        "market": "NASDAQ",
+        "score": 84,
+        "sector": "Technology"
+      }
+    ]
+  },
+  {
+    "date": "2026-10-01T00:26:02Z",
+    "total": 99,
+    "strong_buy": 16,
+    "buy": 41,
+    "hold": 27,
+    "sell": 15,
+    "strong_sell": 0,
     "top_buys": [
       {
         "symbol": "MU",
