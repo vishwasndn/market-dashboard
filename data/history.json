@@ -1,46 +1,5 @@
 [
   {
-    "date": "2026-07-09T22:25:40Z",
-    "total": 99,
-    "strong_buy": 19,
-    "buy": 36,
-    "hold": 29,
-    "sell": 12,
-    "strong_sell": 3,
-    "top_buys": [
-      {
-        "symbol": "MU",
-        "market": "NASDAQ",
-        "score": 98,
-        "sector": "Technology"
-      },
-      {
-        "symbol": "NVDA",
-        "market": "NASDAQ",
-        "score": 92,
-        "sector": "Technology"
-      },
-      {
-        "symbol": "META",
-        "market": "NASDAQ",
-        "score": 89,
-        "sector": "Communication Services"
-      },
-      {
-        "symbol": "MSFT",
-        "market": "NASDAQ",
-        "score": 86,
-        "sector": "Technology"
-      },
-      {
-        "symbol": "AVGO",
-        "market": "NASDAQ",
-        "score": 82,
-        "sector": "Technology"
-      }
-    ]
-  },
-  {
     "date": "2026-07-10T22:08:04Z",
     "total": 99,
     "strong_buy": 20,
@@ -3686,6 +3645,47 @@
         "market": "NASDAQ",
         "score": 84,
         "sector": "Communication Services"
+      }
+    ]
+  },
+  {
+    "date": "2026-11-13T01:43:40Z",
+    "total": 99,
+    "strong_buy": 25,
+    "buy": 29,
+    "hold": 31,
+    "sell": 10,
+    "strong_sell": 3,
+    "top_buys": [
+      {
+        "symbol": "MU",
+        "market": "NASDAQ",
+        "score": 97,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "NVDA",
+        "market": "NASDAQ",
+        "score": 95,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "AMAT",
+        "market": "NASDAQ",
+        "score": 87,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "LRCX",
+        "market": "NASDAQ",
+        "score": 86,
+        "sector": "Technology"
+      },
+      {
+        "symbol": "MSFT",
+        "market": "NASDAQ",
+        "score": 84,
+        "sector": "Technology"
       }
     ]
   }
